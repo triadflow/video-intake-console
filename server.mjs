@@ -27,6 +27,15 @@ const CONFIG = {
   ],
   actions: [
     {
+      id: 'integrate-source',
+      skillName: 'integrate-source',
+      label: 'Assess source',
+      description: 'Assess the source against monitoring living docs and dossier relevance.',
+      cwd: LIVING_DOC_CWD,
+      template: '/integrate-source {{videoUrl}}',
+      successProcessingState: 'needs_review',
+    },
+    {
       id: 'transcribe',
       skillName: 'transcribe',
       label: '/transcribe',

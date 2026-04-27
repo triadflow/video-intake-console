@@ -243,6 +243,7 @@ function renderProcessing(item) {
 
 function renderActions() {
   const shortDescriptions = {
+    'integrate-source': 'Dossier/source assessment',
     transcribe: 'Transcript only',
     custom: 'Use your prompt',
   };
