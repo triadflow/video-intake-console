@@ -141,12 +141,11 @@
     }
 
     h2 {
-      font-size: 13px;
-      text-transform: uppercase;
-      color: var(--muted);
-      letter-spacing: 0.06em;
+      font-size: 14px;
+      color: var(--ink);
+      letter-spacing: 0;
       margin: 0;
-      font-weight: 700;
+      font-weight: 760;
     }
 
     .counter {
@@ -169,9 +168,16 @@
 
     .input-row {
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: 1fr;
       gap: 8px;
       align-items: stretch;
+    }
+
+    .import-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
     }
 
     input,
@@ -253,6 +259,34 @@
       gap: 8px;
     }
 
+    .playlist-list {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 14px;
+    }
+
+    .playlist-item {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      box-shadow: 0 4px 16px rgba(23, 27, 32, 0.04);
+    }
+
+    .playlist-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: flex-start;
+      margin-bottom: 6px;
+    }
+
+    .playlist-title {
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
     .filter-row {
       display: flex;
       gap: 6px;
@@ -280,22 +314,38 @@
       border-color: rgba(29, 111, 216, 0.35);
     }
 
-    .queue-item {
-      width: 100%;
-      text-align: left;
+    .queue-card {
+      position: relative;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: 10px;
-      display: grid;
-      grid-template-columns: 96px 1fr;
-      gap: 10px;
       box-shadow: 0 4px 16px rgba(23, 27, 32, 0.04);
     }
 
-    .queue-item.active {
+    .queue-card.active {
       border-color: var(--blue);
       box-shadow: 0 0 0 3px rgba(29, 111, 216, 0.13);
+    }
+
+    .queue-item {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 0;
+      border-radius: var(--radius);
+      padding: 10px 50px 10px 10px;
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 10px;
+    }
+
+    .queue-copy {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 32px;
+      min-height: 32px;
+      z-index: 1;
     }
 
     .thumb {
@@ -469,42 +519,48 @@
     }
 
     label {
-      font-size: 12px;
-      font-weight: 750;
+      font-size: 13px;
+      font-weight: 700;
       color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0;
     }
 
     .skill-option {
       display: grid;
       grid-template-columns: auto 1fr;
-      gap: 10px;
+      gap: 9px;
       align-items: start;
-      padding: 10px;
+      padding: 8px 9px;
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       background: #fff;
+    }
+
+    .skill-option:has(input:checked) {
+      border-color: rgba(29, 111, 216, 0.42);
+      background: #f5f9ff;
     }
 
     .skill-option input {
       width: 16px;
       height: 16px;
       min-height: 16px;
-      margin-top: 3px;
+      margin-top: 2px;
     }
 
     .skill-name {
-      font-size: 14px;
+      display: block;
+      font-size: 13px;
       font-weight: 800;
-      margin-bottom: 3px;
+      margin-bottom: 1px;
     }
 
     .skill-desc {
-      font-size: 12px;
+      display: block;
+      font-size: 11px;
       color: var(--muted);
-      line-height: 1.35;
+      line-height: 1.25;
     }
 
     .state-line {
@@ -591,6 +647,14 @@
     .job-title {
       font-size: 13px;
       font-weight: 800;
+    }
+
+    .job-meta {
+      margin-top: -2px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      word-break: break-word;
     }
 
     .progress {
@@ -705,16 +769,21 @@
             <label for="videoUrl">YouTube URL</label>
             <div class="input-row">
               <input id="videoUrl" type="url" placeholder="https://www.youtube.com/watch?v=...">
-              <button class="icon-btn" id="addVideo" title="Add to queue" aria-label="Add to queue">
-                <i data-lucide="plus"></i>
-              </button>
             </div>
           </div>
-          <button class="secondary-btn" id="mockPlaylist" type="button">
-            <i data-lucide="list-plus"></i>
-            Load sample playlist
-          </button>
+          <div class="import-actions">
+            <button class="secondary-btn" id="addVideo" type="button">
+              <i data-lucide="plus"></i>
+              Add video
+            </button>
+            <button class="secondary-btn" id="mockPlaylist" type="button">
+              <i data-lucide="list-plus"></i>
+              Import playlist
+            </button>
+          </div>
         </section>
+
+        <div class="playlist-list" id="playlistList"></div>
 
         <div class="filter-row" id="filterRow" aria-label="Queue filters"></div>
 
@@ -739,6 +808,9 @@
                 </button>
                 <button class="icon-btn" title="Skip" aria-label="Skip" id="skipItem">
                   <i data-lucide="x"></i>
+                </button>
+                <button class="icon-btn" title="Remove from queue" aria-label="Remove from queue" id="removeItem">
+                  <i data-lucide="trash-2"></i>
                 </button>
               </div>
             </div>
@@ -775,41 +847,13 @@
         </div>
 
         <section class="skill-card">
-          <div class="field-group">
+          <div class="field-group" id="skillOptions">
             <label>Available skills</label>
-            <label class="skill-option">
-              <input type="radio" name="skill" value="integrate-source" checked>
-              <span>
-                <span class="skill-name">/integrate-source</span>
-                <span class="skill-desc">Transcribe if needed, score relevance across monitoring docs, update living docs and dossier pieces when warranted.</span>
-              </span>
-            </label>
-            <label class="skill-option">
-              <input type="radio" name="skill" value="dossier-scan">
-              <span>
-                <span class="skill-name">/dossier scan</span>
-                <span class="skill-desc">Use the current source as dossier context, focused on the currently published dossier corpus.</span>
-              </span>
-            </label>
-            <label class="skill-option">
-              <input type="radio" name="skill" value="transcribe">
-              <span>
-                <span class="skill-name">/transcribe</span>
-                <span class="skill-desc">Create a local transcript and attach it to the queue item for later decisions.</span>
-              </span>
-            </label>
-            <label class="skill-option">
-              <input type="radio" name="skill" value="custom">
-              <span>
-                <span class="skill-name">Custom prompt</span>
-                <span class="skill-desc">Send video context, notes, and your freeform instruction to Claude Code without a preset skill.</span>
-              </span>
-            </label>
           </div>
 
           <div class="field-group">
             <label for="extraPrompt">Extra direction</label>
-            <textarea id="extraPrompt">Focus on implications for inference economics and AI labs monitoring. Do not rewrite dossier prose unless the video changes a published thesis.</textarea>
+            <textarea id="extraPrompt" placeholder="Optional. Add what Claude Code should pay attention to for this video, for example a question, angle, dossier section, or decision you want back."></textarea>
           </div>
 
           <button class="primary-btn" id="runSkill" type="button">
@@ -839,452 +883,6 @@
     </div>
   </div>
 
-  <script>
-    const skills = {
-      "integrate-source": {
-        label: "/integrate-source",
-        cwd: "/Users/rene/projects/living-doc-compositor",
-        template: "/integrate-source {{videoUrl}}"
-      },
-      "dossier-scan": {
-        label: "/dossier scan",
-        cwd: "/Users/rene/projects/living-doc-compositor",
-        template: "/integrate-source {{videoUrl}}\\n\\nAfter source assessment, report whether the current published dossier corpus should be refreshed."
-      },
-      "transcribe": {
-        label: "/transcribe",
-        cwd: "/Users/rene/projects/living-doc-compositor",
-        template: "/transcribe {{videoUrl}}"
-      },
-      "custom": {
-        label: "custom prompt",
-        cwd: "/Users/rene/projects",
-        template: "Use this YouTube source as context: {{videoUrl}}"
-      }
-    };
-
-    const filters = [
-      { id: "decision", label: "Needs decision" },
-      { id: "all", label: "All" },
-      { id: "unprocessed", label: "Unprocessed" },
-      { id: "queued", label: "Queued" },
-      { id: "transcribed", label: "Transcribed" },
-      { id: "needs_review", label: "Needs review" },
-      { id: "integrated", label: "Integrated" },
-      { id: "failed", label: "Failed" },
-      { id: "skipped", label: "Skipped" }
-    ];
-
-    const decisionStates = new Set(["unprocessed", "transcribed", "needs_review", "failed"]);
-    let activeFilter = "decision";
-
-    const queue = [
-      {
-        id: "v-1",
-        title: "Frontier lab economics and inference demand",
-        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-        videoId: "dQw4w9WgXcQ",
-        watchState: "watching",
-        processingState: "transcribing",
-        source: "Morning playlist",
-        notes: "Good candidate for inference economics. Check whether the claims are concrete enough for indicators.",
-        history: [
-          {
-            time: "09:55",
-            title: "/integrate-source queued",
-            detail: "Local Claude Code run started with extra direction focused on inference economics."
-          },
-          {
-            time: "09:58",
-            title: "Transcription in progress",
-            detail: "Transcript will become the source blob before relevance scoring."
-          }
-        ]
-      },
-      {
-        id: "v-2",
-        title: "Datacenter buildout constraints and AI power markets",
-        url: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
-        videoId: "jNQXAC9IVRw",
-        watchState: "new",
-        processingState: "unprocessed",
-        source: "Morning playlist",
-        notes: "",
-        history: []
-      },
-      {
-        id: "v-3",
-        title: "Evaluation benchmarks, model behavior, and policy claims",
-        url: "https://www.youtube.com/watch?v=ysz5S6PUM-U",
-        videoId: "ysz5S6PUM-U",
-        watchState: "watched",
-        processingState: "needs_review",
-        source: "Manual",
-        notes: "Likely relevant to eval ecosystem. Review before allowing dossier prose changes.",
-        history: [
-          {
-            time: "Yesterday",
-            title: "/transcribe completed",
-            detail: "Readable transcript saved. Awaiting decision on integration."
-          },
-          {
-            time: "Today",
-            title: "Review required",
-            detail: "Potentially touches eval methodology, but needs human judgment before edits."
-          }
-        ]
-      }
-    ];
-
-    const jobs = [
-      {
-        videoItemId: "v-1",
-        title: "/integrate-source running",
-        status: "transcribing",
-        progress: 58,
-        log: "cwd: /Users/rene/projects/living-doc-compositor\\nclaude -p /integrate-source <video-url>\\nStep: resolving YouTube metadata..."
-      }
-    ];
-
-    let currentId = queue.find((item) => decisionStates.has(item.processingState))?.id || queue[0].id;
-
-    const els = {
-      queueList: document.getElementById("queueList"),
-      queueCount: document.getElementById("queueCount"),
-      filterRow: document.getElementById("filterRow"),
-      videoFrame: document.getElementById("videoFrame"),
-      currentTitle: document.getElementById("currentTitle"),
-      currentUrl: document.getElementById("currentUrl"),
-      watchStatePill: document.getElementById("watchStatePill"),
-      processingStatePill: document.getElementById("processingStatePill"),
-      processingCount: document.getElementById("processingCount"),
-      processingSummary: document.getElementById("processingSummary"),
-      processingHistory: document.getElementById("processingHistory"),
-      watchNotes: document.getElementById("watchNotes"),
-      extraPrompt: document.getElementById("extraPrompt"),
-      promptPreview: document.getElementById("promptPreview"),
-      jobList: document.getElementById("jobList"),
-      jobCount: document.getElementById("jobCount"),
-      videoUrl: document.getElementById("videoUrl")
-    };
-
-    function parseYouTubeId(url) {
-      try {
-        const parsed = new URL(url);
-        if (parsed.hostname.includes("youtu.be")) return parsed.pathname.slice(1);
-        if (parsed.searchParams.get("v")) return parsed.searchParams.get("v");
-        const embed = parsed.pathname.match(/\/embed\/([^/?]+)/);
-        if (embed) return embed[1];
-      } catch {
-        return "";
-      }
-      return "";
-    }
-
-    function currentItem() {
-      return queue.find((item) => item.id === currentId) || queue[0];
-    }
-
-    function saveCurrentNotes() {
-      const item = currentItem();
-      if (item) item.notes = els.watchNotes.value;
-    }
-
-    function selectedSkill() {
-      return document.querySelector("input[name='skill']:checked").value;
-    }
-
-    function matchesFilter(item, filterId) {
-      if (filterId === "all") return true;
-      if (filterId === "decision") return decisionStates.has(item.processingState);
-      if (filterId === "skipped") return item.watchState === "skipped";
-      return item.processingState === filterId;
-    }
-
-    function filteredQueue() {
-      return queue.filter((item) => matchesFilter(item, activeFilter));
-    }
-
-    function renderFilters() {
-      els.filterRow.innerHTML = filters.map((filter) => {
-        const active = filter.id === activeFilter ? " active" : "";
-        const count = queue.filter((item) => matchesFilter(item, filter.id)).length;
-        return `<button class="filter-chip${active}" data-filter="${filter.id}">${escapeHtml(filter.label)} <span>${count}</span></button>`;
-      }).join("");
-      document.querySelectorAll(".filter-chip").forEach((button) => {
-        button.addEventListener("click", () => {
-          saveCurrentNotes();
-          activeFilter = button.dataset.filter;
-          const visible = filteredQueue();
-          if (visible.length && !visible.some((item) => item.id === currentId)) {
-            currentId = visible[0].id;
-          }
-          renderAll();
-        });
-      });
-    }
-
-    function renderQueue() {
-      const visible = filteredQueue();
-      els.queueCount.textContent = `${visible.length}/${queue.length} shown`;
-      els.queueList.innerHTML = visible.map((item) => {
-        const active = item.id === currentId ? " active" : "";
-        const thumb = item.videoId
-          ? `<img src="https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg" alt="">`
-          : `<i data-lucide="video"></i>`;
-        const processingClass = pillClassForProcessing(item.processingState);
-        return `
-          <button class="queue-item${active}" data-id="${item.id}">
-            <span class="thumb">${thumb}</span>
-            <span class="item-text">
-              <span class="item-title">${escapeHtml(item.title)}</span>
-              <span class="item-meta">
-                <span>${escapeHtml(item.source)}</span>
-                <span class="pill blue">${escapeHtml(item.watchState)}</span>
-                <span class="pill ${processingClass}">${escapeHtml(item.processingState.replaceAll("_", " "))}</span>
-              </span>
-            </span>
-          </button>
-        `;
-      }).join("") || `
-        <div class="empty">
-          <div class="empty-inner">
-            <i data-lucide="filter"></i>
-            <div>No videos match this filter.</div>
-          </div>
-        </div>
-      `;
-      document.querySelectorAll(".queue-item").forEach((button) => {
-        button.addEventListener("click", () => {
-          saveCurrentNotes();
-          currentId = button.dataset.id;
-          renderAll();
-        });
-      });
-    }
-
-    function renderCurrent() {
-      const item = currentItem();
-      if (!item) return;
-      els.currentTitle.textContent = item.title;
-      els.currentUrl.textContent = item.url;
-      els.watchStatePill.textContent = `watch: ${item.watchState}`;
-      els.processingStatePill.textContent = `processing: ${item.processingState.replaceAll("_", " ")}`;
-      els.processingStatePill.className = `pill ${pillClassForProcessing(item.processingState)}`;
-      els.watchNotes.value = item.notes || "";
-      if (item.videoId) {
-        els.videoFrame.innerHTML = `<iframe src="https://www.youtube.com/embed/${item.videoId}" title="${escapeAttr(item.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
-      } else {
-        els.videoFrame.innerHTML = `
-          <div class="empty">
-            <div class="empty-inner">
-              <i data-lucide="video"></i>
-              <div>No playable YouTube video selected.</div>
-            </div>
-          </div>
-        `;
-      }
-      renderProcessingHistory(item);
-    }
-
-    function renderProcessingHistory(item) {
-      const runs = item.history || [];
-      els.processingCount.textContent = `${runs.length} ${runs.length === 1 ? "run" : "runs"}`;
-      els.processingSummary.innerHTML = `
-        <div>Watch state: <strong>${escapeHtml(item.watchState)}</strong></div>
-        <div>Processing state: <strong>${escapeHtml(item.processingState.replaceAll("_", " "))}</strong></div>
-      `;
-      els.processingHistory.innerHTML = runs.map((entry) => `
-        <div class="timeline-item">
-          <div class="timeline-time">${escapeHtml(entry.time)}</div>
-          <div class="timeline-body">
-            <div class="timeline-title">${escapeHtml(entry.title)}</div>
-            <div class="timeline-detail">${escapeHtml(entry.detail)}</div>
-          </div>
-        </div>
-      `).join("") || `
-        <div class="timeline-item">
-          <div class="timeline-time">Now</div>
-          <div class="timeline-body">
-            <div class="timeline-title">No processing yet</div>
-            <div class="timeline-detail">Choose a skill action when this video is worth transcribing, scanning, or integrating.</div>
-          </div>
-        </div>
-      `;
-    }
-
-    function pillClassForProcessing(state) {
-      if (state === "integrated" || state === "transcribed") return "green";
-      if (state === "queued" || state === "transcribing" || state === "running_skill") return "amber";
-      if (state === "needs_review") return "violet";
-      if (state === "failed") return "red";
-      return "";
-    }
-
-    function buildInvocation() {
-      const item = currentItem();
-      const skill = skills[selectedSkill()];
-      const base = skill.template.replaceAll("{{videoUrl}}", item?.url || "<video-url>");
-      const notes = els.watchNotes.value.trim();
-      const extra = els.extraPrompt.value.trim();
-      return [
-        `cwd: ${skill.cwd}`,
-        "",
-        `claude -p <<'PROMPT'`,
-        base,
-        "",
-        "Video context:",
-        `- title: ${item?.title || ""}`,
-        `- url: ${item?.url || ""}`,
-        `- watchState: ${item?.watchState || ""}`,
-        `- processingState: ${item?.processingState || ""}`,
-        notes ? `- watchNotes: ${notes}` : "- watchNotes: none yet",
-        "",
-        "Extra user direction:",
-        extra || "none",
-        "PROMPT"
-      ].join("\\n");
-    }
-
-    function renderPreview() {
-      els.promptPreview.textContent = buildInvocation();
-    }
-
-    function renderJobs() {
-      els.jobCount.textContent = `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}`;
-      els.jobList.innerHTML = jobs.map((job) => `
-        <div class="job">
-          <div class="job-top">
-            <div class="job-title">${escapeHtml(job.title)}</div>
-            <span class="pill amber">${escapeHtml(job.status)}</span>
-          </div>
-          <div class="progress"><span style="width:${job.progress}%"></span></div>
-          <div class="log">${escapeHtml(job.log)}</div>
-        </div>
-      `).join("");
-    }
-
-    function renderAll() {
-      renderFilters();
-      renderQueue();
-      renderCurrent();
-      renderPreview();
-      renderJobs();
-      if (window.lucide) lucide.createIcons();
-    }
-
-    function addVideoFromInput() {
-      const url = els.videoUrl.value.trim();
-      if (!url) return;
-      const id = parseYouTubeId(url);
-      const item = {
-        id: `v-${Date.now()}`,
-        title: id ? `YouTube video ${id}` : "Unresolved YouTube source",
-        url,
-        videoId: id,
-        watchState: "new",
-        processingState: "unprocessed",
-        source: "Manual",
-        notes: "",
-        history: []
-      };
-      queue.unshift(item);
-      currentId = item.id;
-      els.videoUrl.value = "";
-      renderAll();
-    }
-
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    }
-
-    function escapeAttr(value) {
-      return escapeHtml(value).replaceAll("`", "&#096;");
-    }
-
-    document.getElementById("addVideo").addEventListener("click", addVideoFromInput);
-    els.videoUrl.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") addVideoFromInput();
-    });
-
-    document.getElementById("mockPlaylist").addEventListener("click", () => {
-      const imported = [
-        ["v-pl-1", "Playlist item: open source model economics", "https://www.youtube.com/watch?v=aqz-KE-bpKQ", "aqz-KE-bpKQ"],
-        ["v-pl-2", "Playlist item: AI evaluation failure modes", "https://www.youtube.com/watch?v=ScMzIvxBSi4", "ScMzIvxBSi4"],
-        ["v-pl-3", "Playlist item: protocol and agent tooling discussion", "https://www.youtube.com/watch?v=YE7VzlLtp-4", "YE7VzlLtp-4"]
-      ].map(([id, title, url, videoId]) => ({
-        id,
-        title,
-        url,
-        videoId,
-        watchState: "new",
-        processingState: "unprocessed",
-        source: "Imported playlist",
-        notes: "",
-        history: []
-      }));
-      queue.unshift(...imported);
-      currentId = imported[0].id;
-      renderAll();
-    });
-
-    document.getElementById("markWatched").addEventListener("click", () => {
-      const item = currentItem();
-      if (item) item.watchState = "watched";
-      renderAll();
-    });
-
-    document.getElementById("skipItem").addEventListener("click", () => {
-      const item = currentItem();
-      if (item) item.watchState = "skipped";
-      renderAll();
-    });
-
-    document.getElementById("runSkill").addEventListener("click", () => {
-      const skill = skills[selectedSkill()];
-      const item = currentItem();
-      if (!item) return;
-      saveCurrentNotes();
-      item.processingState = selectedSkill() === "transcribe" ? "queued" : "running_skill";
-      item.history = item.history || [];
-      item.history.unshift({
-        time: "Now",
-        title: `${skill.label} queued`,
-        detail: "Background run created from current video context, watch notes, and extra direction."
-      });
-      jobs.unshift({
-        videoItemId: item.id,
-        title: `${skill.label} queued`,
-        status: "mock run",
-        progress: 14,
-        log: buildInvocation()
-      });
-      renderAll();
-    });
-
-    document.getElementById("copyPreview").addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(buildInvocation());
-      } catch {
-        // Clipboard is unavailable from some file:// contexts.
-      }
-    });
-
-    document.querySelectorAll("input[name='skill']").forEach((input) => {
-      input.addEventListener("change", renderPreview);
-    });
-    els.watchNotes.addEventListener("input", () => {
-      saveCurrentNotes();
-      renderPreview();
-    });
-    els.extraPrompt.addEventListener("input", renderPreview);
-
-    renderAll();
-  </script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

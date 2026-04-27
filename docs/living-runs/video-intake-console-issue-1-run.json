@@ -1,0 +1,508 @@
+{
+  "docId": "doc:video-intake-console-issue-1-implementation-run",
+  "title": "Video Intake Console Issue 1 Implementation Run",
+  "subtitle": "Inference-time Codex living doc run",
+  "brand": "LD",
+  "scope": "Implement GitHub issue #1 in triadflow/video-intake-console: build the local video intake console into a working local app with durable queue, YouTube import, skill action configuration, local Claude Code runner, per-video processing history/artifacts/review workflow, and first living-doc-compositor integration path.",
+  "owner": "Codex",
+  "version": "draft",
+  "canonicalOrigin": "/Users/rene/projects/video-intake-console/docs/living-runs/video-intake-console-issue-1-run.json",
+  "sourceCoverage": "Issue #1 and sub-issues hydrated; source commit 96bdafe implements the local app, persistence, skill discovery, runner seam, and API verification probes.",
+  "updated": "2026-04-27T02:29:03.412Z",
+  "runState": {
+    "phase": "finalized-partial-delivery",
+    "documentReady": true,
+    "objectiveReady": false,
+    "targetRepo": "triadflow/video-intake-console",
+    "focalIssue": "https://github.com/triadflow/video-intake-console/issues/1",
+    "sourceSystemOutputsExpected": [
+      "committed implementation changes",
+      "verification evidence",
+      "pushed branch",
+      "draft PR or updated PR",
+      "issue #1 progress update",
+      "linked run document"
+    ],
+    "lastSourceCommit": "96bdafe",
+    "implementationBranch": "issue-1-video-intake-console-app",
+    "pullRequest": "https://github.com/triadflow/video-intake-console/pull/9",
+    "issueUpdate": "https://github.com/triadflow/video-intake-console/issues/1#issuecomment-4323808654",
+    "verificationEvidence": [
+      "npm run check",
+      "npm start served http://127.0.0.1:4177",
+      "GET /api/health detected claude, yt-dlp, and configured actions",
+      "POST /api/queue/video imported a YouTube URL and resolved metadata",
+      "PATCH /api/queue/:id persisted notes and watch state",
+      "duplicate video add returned the existing queue item",
+      "POST /api/jobs ran a harmless custom prompt through local claude -p - and captured output/status",
+      "rg found no direct Anthropic/OpenAI API usage in source files"
+    ],
+    "remainingObjectiveGaps": [
+      "Public playlist import route needs a dedicated verification run with a known public playlist.",
+      "Missing-CLI, non-zero exit, and timeout runner paths are implemented but not externally verified.",
+      "The first real /integrate-source or dossier-focused run against living-doc-compositor has not been executed from the app.",
+      "Browser-level screenshot/interaction smoke coverage has not been added."
+    ],
+    "nextObjectiveAction": "Review draft PR #9, run remaining playlist/negative-path/downstream checks, then decide whether to merge or extend the PR."
+  },
+  "objective": "Implement GitHub issue #1 in triadflow/video-intake-console: build the local video intake console into a working local app with durable queue, YouTube import, skill action configuration, local Claude Code runner, per-video processing history/artifacts/review workflow, and first living-doc-compositor integration path.",
+  "successCondition": "Issue #1 epic acceptance criteria are satisfied by committed source changes, verification evidence, pushed branch, opened or updated PR, issue update, and linked run document. If the full epic cannot be completed in this run, objectiveReady=false must be recorded with evidenced blockers, completed implementation evidence, and source-system follow-up state.",
+  "objectiveFacets": [
+    {
+      "id": "frame-objective",
+      "name": "Frame objective",
+      "description": "The objective and success condition are explicit enough to guide work."
+    },
+    {
+      "id": "meet-success-condition",
+      "name": "Meet success condition",
+      "description": "Issue #1 epic acceptance criteria are satisfied by committed source changes, verification evidence, pushed branch, opened or updated PR, issue update, and linked run document. If the full epic cannot be completed in this run, objectiveReady=false must be recorded with evidenced blockers, completed implementation evidence, and source-system follow-up state."
+    },
+    {
+      "id": "hydrate-sources",
+      "name": "Hydrate sources",
+      "description": "Relevant source material is discovered and linked into the document."
+    },
+    {
+      "id": "implement-or-resolve",
+      "name": "Implement or resolve",
+      "description": "The core work is completed or a blocked conclusion is justified."
+    },
+    {
+      "id": "verify-outcome",
+      "name": "Verify outcome",
+      "description": "Evidence supports the final status of the objective."
+    },
+    {
+      "id": "finalize-handoff",
+      "name": "Finalize handoff",
+      "description": "The final document records source links, residual risks, and completion state."
+    }
+  ],
+  "coverage": [
+    {
+      "facetId": "frame-objective",
+      "sectionId": "decision-record",
+      "cardId": "decision-local-first",
+      "rationale": "The local-first decision frames the objective and constrains delivery shape."
+    },
+    {
+      "facetId": "meet-success-condition",
+      "sectionId": "capability-surface",
+      "cardId": "cap-living-doc-integration",
+      "rationale": "The final integration path is one of the epic gates required before objective readiness."
+    },
+    {
+      "facetId": "hydrate-sources",
+      "sectionId": "code-anchor",
+      "cardId": "anchor-static-mockup",
+      "rationale": "The current static mockup is the canonical source artifact for initial implementation context."
+    },
+    {
+      "facetId": "implement-or-resolve",
+      "sectionId": "capability-surface",
+      "cardId": "cap-app-shell",
+      "rationale": "The app shell capability is the first implementation carrier for the epic."
+    },
+    {
+      "facetId": "verify-outcome",
+      "sectionId": "verification-surface",
+      "cardId": "verify-local-start",
+      "rationale": "Local startup and UI smoke verification is an initial blocking verification carrier."
+    },
+    {
+      "facetId": "finalize-handoff",
+      "sectionId": "verification-surface",
+      "cardId": "verify-downstream",
+      "rationale": "Final handoff must include downstream integration evidence and residual review state."
+    }
+  ],
+  "invariants": [
+    {
+      "id": "status-needs-evidence",
+      "name": "Status needs evidence",
+      "statement": "Do not mark the objective complete unless verification evidence is linked to the relevant section or card.",
+      "appliesTo": [
+        "capability-surface",
+        "code-anchor",
+        "verification-surface",
+        "decision-record"
+      ]
+    },
+    {
+      "id": "source-detail-owned-by-source",
+      "name": "Source detail owned by source",
+      "statement": "Large, operational, canonical, or executable detail should live in a source artifact and be linked from the doc.",
+      "appliesTo": [
+        "*"
+      ]
+    },
+    {
+      "id": "no-api-runner-substitution",
+      "name": "No API runner substitution",
+      "statement": "Do not satisfy the runner facet with Anthropic/OpenAI API calls; the app must invoke local Claude Code CLI for skill execution.",
+      "appliesTo": [
+        "capability-surface",
+        "verification-surface"
+      ]
+    },
+    {
+      "id": "epic-not-ready-from-subset",
+      "name": "Epic not ready from subset",
+      "statement": "Do not mark objectiveReady true until the issue #1 epic acceptance criteria are satisfied or explicitly blocked with evidence; closing one sub-ticket is not enough.",
+      "appliesTo": [
+        "capability-surface",
+        "verification-surface"
+      ]
+    },
+    {
+      "id": "downstream-changes-need-review",
+      "name": "Downstream changes need review",
+      "statement": "If a living-doc-compositor skill run changes downstream files, surface review state and do not auto-commit or push those downstream changes.",
+      "appliesTo": [
+        "capability-surface",
+        "verification-surface"
+      ]
+    }
+  ],
+  "metaFingerprint": "",
+  "sections": [
+    {
+      "id": "capability-surface",
+      "title": "Capability Surface",
+      "convergenceType": "capability-surface",
+      "rationale": "Initial feature shipping frame selected for the objective; refine after source hydration.",
+      "updated": "2026-04-27T02:27:09.896Z",
+      "data": [
+        {
+          "id": "cap-app-shell",
+          "name": "Local app shell from static mockup",
+          "title": "Local app shell from static mockup",
+          "status": "built",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/2"
+          ],
+          "codePaths": [
+            "index.html",
+            "README.md"
+          ],
+          "notes": [
+            "Commit 96bdafe adds package.json, server.mjs, app.js, and keeps the validated three-pane UX in index.html.",
+            "README now documents npm start and the local URL."
+          ]
+        },
+        {
+          "id": "cap-durable-queue",
+          "name": "Durable video queue and state model",
+          "title": "Durable video queue and state model",
+          "status": "built",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/3"
+          ],
+          "codePaths": [
+            "index.html"
+          ],
+          "notes": [
+            "server.mjs persists queue and jobs in .video-intake-data/state.json.",
+            "Verified add video, patch notes/watchState, restart-safe state file, duplicate detection, and per-video history from job completion."
+          ]
+        },
+        {
+          "id": "cap-skill-actions",
+          "name": "Configured Claude Code skill actions",
+          "title": "Configured Claude Code skill actions",
+          "status": "built",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/4"
+          ],
+          "codePaths": [
+            "index.html"
+          ],
+          "notes": [
+            "server.mjs discovers configured actions from /Users/rene/projects/living-doc-compositor/.claude/skills.",
+            "Verified /api/health exposes allowlisted integrate-source, dossier-scan, transcribe, and custom actions with cwd and availability."
+          ]
+        },
+        {
+          "id": "cap-local-runner",
+          "name": "Local Claude Code runner with job tracking",
+          "title": "Local Claude Code runner with job tracking",
+          "status": "built",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/5"
+          ],
+          "codePaths": [
+            "README.md"
+          ],
+          "notes": [
+            "server.mjs runs claude -p - locally, writes prompt to stdin, captures stdout/stderr, records exit code and duration, and stores log artifacts.",
+            "Verified a harmless custom prompt job completed successfully through local Claude Code CLI."
+          ]
+        },
+        {
+          "id": "cap-youtube-import",
+          "name": "YouTube video and playlist import",
+          "title": "YouTube video and playlist import",
+          "status": "partial",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/6"
+          ],
+          "codePaths": [
+            "index.html"
+          ],
+          "notes": [
+            "Video URL import is implemented and verified with yt-dlp metadata resolution and duplicate detection.",
+            "Playlist import is implemented through yt-dlp --flat-playlist but still needs a dedicated public-playlist verification run."
+          ]
+        },
+        {
+          "id": "cap-processing-history",
+          "name": "Per-video processing history, artifacts, and review workflow",
+          "title": "Per-video processing history, artifacts, and review workflow",
+          "status": "built",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/7"
+          ],
+          "codePaths": [
+            "index.html"
+          ],
+          "notes": [
+            "Jobs append durable per-video history entries and run-log artifacts.",
+            "Verified a successful custom run moved the video to needs_review with retained stdout and changed-file metadata."
+          ]
+        },
+        {
+          "id": "cap-living-doc-integration",
+          "name": "First living-doc-compositor integration path",
+          "title": "First living-doc-compositor integration path",
+          "status": "partial",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/8"
+          ],
+          "codePaths": [
+            "README.md"
+          ],
+          "notes": [
+            "Configured integrate-source and dossier-scan actions target /Users/rene/projects/living-doc-compositor and reuse the existing skill contract.",
+            "A real integrate-source run was not executed in this pass to avoid unreviewed downstream doc mutations; this remains the main objective readiness gap."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "code-anchor",
+      "title": "Code Anchor",
+      "convergenceType": "code-anchor",
+      "rationale": "Initial feature shipping frame selected for the objective; refine after source hydration.",
+      "updated": "2026-04-27T02:27:09.896Z",
+      "data": [
+        {
+          "id": "anchor-static-mockup",
+          "name": "Static mockup entrypoint",
+          "title": "Static mockup entrypoint",
+          "status": "current",
+          "path": "index.html",
+          "range": "1-1313",
+          "revision": "96bdafe",
+          "what_it_does": "Single-file static UI mockup for queue, YouTube player, skill action preview, filters, and mock jobs.",
+          "why_it_matters": [
+            "This is the UX source to preserve while moving to a working local app."
+          ],
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/1"
+          ]
+        },
+        {
+          "id": "anchor-readme",
+          "name": "Current README",
+          "title": "Current README",
+          "status": "current",
+          "path": "README.md",
+          "range": "1-23",
+          "revision": "96bdafe",
+          "what_it_does": "Documents the static mockup and the intended local Claude Code backend route.",
+          "why_it_matters": [
+            "README must become the source of truth for local setup and verification once the app is implemented."
+          ],
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/2"
+          ]
+        },
+        {
+          "id": "anchor-server",
+          "name": "Local Node server and worker",
+          "title": "Local Node server and worker",
+          "status": "current",
+          "path": "server.mjs",
+          "range": "1-619",
+          "revision": "96bdafe",
+          "what_it_does": "Serves the local app, stores queue/job state, imports YouTube metadata via yt-dlp, discovers skill actions, and runs claude -p jobs.",
+          "why_it_matters": [
+            "This file owns the local-first backend and Claude Code runner capability for the epic."
+          ],
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/3",
+            "https://github.com/triadflow/video-intake-console/issues/4",
+            "https://github.com/triadflow/video-intake-console/issues/5",
+            "https://github.com/triadflow/video-intake-console/issues/6",
+            "https://github.com/triadflow/video-intake-console/issues/8"
+          ]
+        },
+        {
+          "id": "anchor-client",
+          "name": "Frontend app controller",
+          "title": "Frontend app controller",
+          "status": "current",
+          "path": "app.js",
+          "range": "1-371",
+          "revision": "96bdafe",
+          "what_it_does": "Loads queue/actions/jobs from the API, renders filters/current video/skill actions/history, and sends mutations back to the server.",
+          "why_it_matters": [
+            "This file owns the live behavior of the previously static mockup."
+          ],
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/2",
+            "https://github.com/triadflow/video-intake-console/issues/7"
+          ]
+        },
+        {
+          "id": "anchor-package",
+          "name": "Local run scripts",
+          "title": "Local run scripts",
+          "status": "current",
+          "path": "package.json",
+          "range": "1-11",
+          "revision": "96bdafe",
+          "what_it_does": "Defines npm start/dev and syntax check commands.",
+          "why_it_matters": [
+            "This makes the local app start and verification commands explicit."
+          ],
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/2"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "verification-surface",
+      "title": "Verification Surface",
+      "convergenceType": "verification-surface",
+      "rationale": "Initial feature shipping frame selected for the objective; refine after source hydration.",
+      "updated": "2026-04-27T02:27:09.896Z",
+      "data": [
+        {
+          "id": "verify-local-start",
+          "name": "Local app startup and UI smoke",
+          "title": "Local app startup and UI smoke",
+          "status": "partial",
+          "priority": "blocking",
+          "automationPaths": [
+            "package scripts pending"
+          ],
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/2"
+          ],
+          "currentCoverage": "npm run check passes; npm start served http://127.0.0.1:4177; curl verified index.html and app.js are served.",
+          "nextStep": "Run browser-level smoke test if needed before merge.",
+          "gaps": [
+            "No Playwright/browser screenshot verification has been added.",
+            "Draft PR #9 carries the implementation for review."
+          ]
+        },
+        {
+          "id": "verify-persistence",
+          "name": "Queue persistence and filters",
+          "title": "Queue persistence and filters",
+          "status": "partial",
+          "priority": "blocking",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/3"
+          ],
+          "currentCoverage": "Video add, metadata resolution, note/watchState patch, duplicate detection, and job history persistence verified through API.",
+          "nextStep": "Add automated tests or scripted fixtures for state transitions.",
+          "gaps": [
+            "Restart was represented by persisted state and server restart, but there is not yet an automated persistence test.",
+            "Draft PR #9 carries the implementation for review."
+          ]
+        },
+        {
+          "id": "verify-runner",
+          "name": "Local Claude Code runner behavior",
+          "title": "Local Claude Code runner behavior",
+          "status": "partial",
+          "priority": "blocking",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/5"
+          ],
+          "currentCoverage": "Custom action job invoked claude -p -, completed with exitCode 0, captured stdout, duration, and changed-file status; rg found no Anthropic/OpenAI API usage.",
+          "nextStep": "Add negative-path verification for missing CLI, non-zero exit, and timeout.",
+          "gaps": [
+            "Failure and timeout paths are implemented but not yet externally verified.",
+            "Draft PR #9 carries the implementation for review."
+          ]
+        },
+        {
+          "id": "verify-downstream",
+          "name": "living-doc-compositor end-to-end route",
+          "title": "living-doc-compositor end-to-end route",
+          "status": "partial",
+          "priority": "blocking",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/8"
+          ],
+          "currentCoverage": "Actions are configured with cwd /Users/rene/projects/living-doc-compositor and discovered integrate-source skill metadata.",
+          "nextStep": "Run a harmless or explicitly approved /integrate-source invocation and record downstream git status.",
+          "gaps": [
+            "No real living-doc-compositor skill run has been executed from this app yet.",
+            "Draft PR #9 carries the implementation for review."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "decision-record",
+      "title": "Decision Record",
+      "convergenceType": "decision-record",
+      "rationale": "Initial feature shipping frame selected for the objective; refine after source hydration.",
+      "updated": "2026-04-27T02:27:09.896Z",
+      "data": [
+        {
+          "id": "decision-local-first",
+          "name": "Local-first app, not hosted service",
+          "title": "Local-first app, not hosted service",
+          "status": "ground-truth",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/1"
+          ],
+          "notes": [
+            "Issue #1 explicitly requires a local web console and local Claude Code route."
+          ]
+        },
+        {
+          "id": "decision-claude-cli",
+          "name": "Skill execution goes through local Claude Code CLI",
+          "title": "Skill execution goes through local Claude Code CLI",
+          "status": "ground-truth",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/5"
+          ],
+          "notes": [
+            "The app must invoke claude -p locally. Direct Anthropic/OpenAI API calls are out of scope for satisfying the runner."
+          ]
+        },
+        {
+          "id": "decision-orchestrate-not-duplicate",
+          "name": "Orchestrate existing living-doc-compositor skills",
+          "title": "Orchestrate existing living-doc-compositor skills",
+          "status": "ground-truth",
+          "ticketIds": [
+            "https://github.com/triadflow/video-intake-console/issues/8"
+          ],
+          "notes": [
+            "The app is the intake and orchestration layer; it must not copy /integrate-source or /dossier business logic."
+          ]
+        }
+      ]
+    }
+  ]
+}
