@@ -244,7 +244,6 @@ function renderProcessing(item) {
 function renderActions() {
   const shortDescriptions = {
     'integrate-source': 'Assess and integrate',
-    'dossier-scan': 'Dossier relevance scan',
     transcribe: 'Transcript only',
     custom: 'Use your prompt',
   };

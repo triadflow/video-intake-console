@@ -35,15 +35,6 @@ const CONFIG = {
       successProcessingState: 'needs_review',
     },
     {
-      id: 'dossier-scan',
-      skillName: 'integrate-source',
-      label: 'Dossier scan',
-      description: 'Assess whether the current published dossier corpus should be refreshed from this source.',
-      cwd: LIVING_DOC_CWD,
-      template: '/integrate-source {{videoUrl}}\n\nAfter source assessment, report whether the current published dossier corpus should be refreshed. Do not commit or push downstream changes.',
-      successProcessingState: 'needs_review',
-    },
-    {
       id: 'transcribe',
       skillName: 'transcribe',
       label: '/transcribe',
