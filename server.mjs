@@ -552,6 +552,31 @@ async function handleApi(req, res, pathname) {
     return;
   }
   const queuePatch = pathname.match(/^\/api\/queue\/([^/]+)$/);
+  if (req.method === 'DELETE' && queuePatch) {
+    const itemId = queuePatch[1];
+    const itemIndex = state.queue.findIndex((entry) => entry.id === itemId);
+    if (itemIndex < 0) throw new Error('Queue item not found');
+    const activeJob = state.jobs.find((job) => job.itemId === itemId && ['queued', 'running'].includes(job.status));
+    if (activeJob) {
+      sendError(res, 409, 'Cannot remove a video while a job is active for it', { jobId: activeJob.id });
+      return;
+    }
+    const [removed] = state.queue.splice(itemIndex, 1);
+    const relatedJobs = state.jobs.filter((job) => job.itemId === itemId);
+    for (const job of relatedJobs) {
+      job.orphanedQueueItem = {
+        id: removed.id,
+        title: removed.title,
+        videoId: removed.videoId,
+        canonicalUrl: removed.canonicalUrl,
+        removedAt: nowIso(),
+      };
+      job.updatedAt = nowIso();
+    }
+    await saveState();
+    sendJson(res, 200, { removed, preservedJobs: relatedJobs.length });
+    return;
+  }
   if (req.method === 'PATCH' && queuePatch) {
     const body = await readJson(req);
     const item = state.queue.find((entry) => entry.id === queuePatch[1]);

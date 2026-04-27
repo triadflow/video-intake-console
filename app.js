@@ -48,6 +48,7 @@ const els = {
   videoUrl: document.getElementById('videoUrl'),
   mockPlaylist: document.getElementById('mockPlaylist'),
   runSkill: document.getElementById('runSkill'),
+  removeItem: document.getElementById('removeItem'),
 };
 
 async function api(path, options = {}) {
@@ -272,6 +273,7 @@ function renderStatus() {
   const warnings = state.warnings.length ? ` · ${state.warnings.length} warning${state.warnings.length === 1 ? '' : 's'}` : '';
   els.topStatus.textContent = `Claude ${state.claudeAvailable ? 'available' : 'missing'} · yt-dlp ${state.ytDlpAvailable ? 'available' : 'missing'}${warnings}`;
   els.runSkill.disabled = !state.claudeAvailable || !currentItem();
+  els.removeItem.disabled = !currentItem();
 }
 
 function render() {
@@ -344,6 +346,17 @@ async function patchCurrent(patch) {
   await refresh();
 }
 
+async function removeCurrent() {
+  const item = currentItem();
+  if (!item) return;
+  const confirmed = window.confirm(`Remove "${item.title}" from the queue?\n\nRun logs are preserved, but this queue item will be removed.`);
+  if (!confirmed) return;
+  await api(`/api/queue/${item.id}`, { method: 'DELETE' });
+  const visible = filteredQueue().filter((entry) => entry.id !== item.id);
+  state.currentId = visible[0]?.id || state.queue.find((entry) => entry.id !== item.id)?.id || '';
+  await refresh();
+}
+
 async function runSkill() {
   const item = currentItem();
   const action = selectedAction();
@@ -366,6 +379,7 @@ els.videoUrl.addEventListener('keydown', (event) => {
 els.mockPlaylist.addEventListener('click', () => importPlaylist().catch((err) => alert(err.message)));
 document.getElementById('markWatched').addEventListener('click', () => patchCurrent({ watchState: 'watched' }));
 document.getElementById('skipItem').addEventListener('click', () => patchCurrent({ watchState: 'skipped' }));
+els.removeItem.addEventListener('click', () => removeCurrent().catch((err) => alert(err.message)));
 els.watchNotes.addEventListener('input', () => {
   const item = currentItem();
   if (item) item.notes = els.watchNotes.value;
