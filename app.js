@@ -27,6 +27,8 @@ let state = {
 };
 
 let renderedVideoId = null;
+let notesSaveTimer = null;
+let notesSaveInFlight = Promise.resolve();
 
 const els = {
   topStatus: document.querySelector('.top-status span:last-child'),
@@ -391,6 +393,36 @@ async function patchCurrent(patch) {
   await refresh();
 }
 
+function saveWatchNotes(itemId, notes) {
+  notesSaveInFlight = notesSaveInFlight
+    .catch(() => {})
+    .then(() => api(`/api/queue/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ notes }),
+    }).catch((err) => {
+      console.error('[notes] autosave failed', err);
+    }));
+  return notesSaveInFlight;
+}
+
+function scheduleWatchNotesSave() {
+  const item = currentItem();
+  if (!item) return;
+  window.clearTimeout(notesSaveTimer);
+  notesSaveTimer = window.setTimeout(() => {
+    saveWatchNotes(item.id, els.watchNotes.value);
+  }, 700);
+}
+
+async function flushWatchNotes() {
+  const item = currentItem();
+  window.clearTimeout(notesSaveTimer);
+  notesSaveTimer = null;
+  if (!item) return notesSaveInFlight;
+  await notesSaveInFlight;
+  return saveWatchNotes(item.id, els.watchNotes.value);
+}
+
 async function removeCurrent() {
   const item = currentItem();
   if (!item) return;
@@ -406,6 +438,7 @@ async function runSkill() {
   const item = currentItem();
   const action = selectedAction();
   if (!item || !action) return;
+  await flushWatchNotes();
   await api('/api/jobs', {
     method: 'POST',
     body: JSON.stringify({
@@ -429,8 +462,9 @@ els.watchNotes.addEventListener('input', () => {
   const item = currentItem();
   if (item) item.notes = els.watchNotes.value;
   renderPreview();
+  scheduleWatchNotesSave();
 });
-els.watchNotes.addEventListener('blur', () => patchCurrent({ notes: els.watchNotes.value }));
+els.watchNotes.addEventListener('blur', () => flushWatchNotes());
 els.extraPrompt.addEventListener('input', renderPreview);
 els.runSkill.addEventListener('click', () => runSkill().catch((err) => alert(err.message)));
 document.getElementById('copyPreview').addEventListener('click', () => navigator.clipboard?.writeText(buildInvocation()));
