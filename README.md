@@ -63,3 +63,7 @@ Useful API probes while the server is running:
 curl -sS http://127.0.0.1:4177/api/health
 curl -sS http://127.0.0.1:4177/api/queue
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
