@@ -17,9 +17,11 @@ const MAX_BODY = 2_000_000;
 const RUN_TIMEOUT_MS = Number(process.env.VIDEO_INTAKE_RUN_TIMEOUT_MS || 10 * 60 * 1000);
 
 const LIVING_DOC_CWD = '/Users/rene/projects/living-doc-compositor';
+const USER_CLAUDE_SKILLS = path.join(process.env.HOME || '/Users/rene', '.claude/skills');
 
 const CONFIG = {
   skillRoots: [
+    USER_CLAUDE_SKILLS,
     path.join(LIVING_DOC_CWD, '.claude/skills'),
   ],
   actions: [
@@ -35,7 +37,7 @@ const CONFIG = {
     {
       id: 'dossier-scan',
       skillName: 'integrate-source',
-      label: '/dossier scan',
+      label: 'Dossier scan',
       description: 'Assess whether the current published dossier corpus should be refreshed from this source.',
       cwd: LIVING_DOC_CWD,
       template: '/integrate-source {{videoUrl}}\n\nAfter source assessment, report whether the current published dossier corpus should be refreshed. Do not commit or push downstream changes.',
@@ -49,7 +51,6 @@ const CONFIG = {
       cwd: LIVING_DOC_CWD,
       template: '/transcribe {{videoUrl}}',
       successProcessingState: 'transcribed',
-      allowWithoutSkill: true,
     },
     {
       id: 'custom',
