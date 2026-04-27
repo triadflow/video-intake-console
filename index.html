@@ -1,0 +1,1290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Intake Console</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --panel-2: #f0f3f6;
+      --ink: #171b20;
+      --muted: #66717f;
+      --line: #d9dee5;
+      --line-strong: #bdc6d1;
+      --blue: #1d6fd8;
+      --blue-dark: #124f9c;
+      --green: #178558;
+      --amber: #a86405;
+      --red: #c43d32;
+      --violet: #6c4ed9;
+      --shadow: 0 12px 32px rgba(23, 27, 32, 0.08);
+      --radius: 8px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      min-width: 320px;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 7px;
+      background: #171b20;
+      color: white;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+    }
+
+    h1 {
+      font-size: 16px;
+      line-height: 1.15;
+      margin: 0;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .top-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      min-width: 0;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      flex: 0 0 auto;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) minmax(300px, 400px);
+      gap: 1px;
+      background: var(--line);
+      min-height: calc(100vh - 57px);
+    }
+
+    aside,
+    main {
+      background: var(--bg);
+      min-width: 0;
+    }
+
+    .queue-pane,
+    .action-pane {
+      padding: 16px;
+      overflow: auto;
+      max-height: calc(100vh - 57px);
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      margin: 0;
+      font-weight: 700;
+    }
+
+    .counter {
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
+
+    .import-box {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      box-shadow: var(--shadow);
+      margin-bottom: 14px;
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      background: white;
+      color: var(--ink);
+      outline: none;
+    }
+
+    input,
+    select {
+      min-height: 38px;
+      padding: 0 10px;
+    }
+
+    textarea {
+      min-height: 150px;
+      padding: 10px;
+      line-height: 1.42;
+      resize: vertical;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(29, 111, 216, 0.14);
+    }
+
+    .icon-btn,
+    .primary-btn,
+    .secondary-btn {
+      min-height: 38px;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .icon-btn {
+      width: 38px;
+      background: var(--panel-2);
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+
+    .icon-btn:hover,
+    .secondary-btn:hover {
+      background: #e5eaf0;
+    }
+
+    .primary-btn {
+      width: 100%;
+      background: var(--blue);
+      color: white;
+      font-weight: 700;
+      margin-top: 10px;
+    }
+
+    .primary-btn:hover {
+      background: var(--blue-dark);
+    }
+
+    .secondary-btn {
+      background: var(--panel);
+      color: var(--ink);
+      border: 1px solid var(--line-strong);
+      padding: 0 12px;
+    }
+
+    .queue-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin: 0 0 14px;
+    }
+
+    .filter-chip {
+      min-height: 30px;
+      border-radius: 999px;
+      padding: 0 10px;
+      background: var(--panel);
+      color: var(--muted);
+      border: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 750;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .filter-chip.active {
+      background: #e8f1fd;
+      color: var(--blue-dark);
+      border-color: rgba(29, 111, 216, 0.35);
+    }
+
+    .queue-item {
+      width: 100%;
+      text-align: left;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 10px;
+      box-shadow: 0 4px 16px rgba(23, 27, 32, 0.04);
+    }
+
+    .queue-item.active {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(29, 111, 216, 0.13);
+    }
+
+    .thumb {
+      aspect-ratio: 16 / 9;
+      border-radius: 6px;
+      background: #cdd5df;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+    }
+
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .item-text {
+      min-width: 0;
+    }
+
+    .item-title {
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.25;
+      margin-bottom: 6px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .item-meta {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 0 7px;
+      background: var(--panel-2);
+      color: var(--muted);
+      border: 1px solid var(--line);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .pill.green {
+      color: var(--green);
+      background: rgba(23, 133, 88, 0.08);
+      border-color: rgba(23, 133, 88, 0.24);
+    }
+
+    .pill.amber {
+      color: var(--amber);
+      background: rgba(168, 100, 5, 0.08);
+      border-color: rgba(168, 100, 5, 0.24);
+    }
+
+    .pill.blue {
+      color: var(--blue-dark);
+      background: rgba(29, 111, 216, 0.08);
+      border-color: rgba(29, 111, 216, 0.24);
+    }
+
+    .pill.violet {
+      color: var(--violet);
+      background: rgba(108, 78, 217, 0.08);
+      border-color: rgba(108, 78, 217, 0.24);
+    }
+
+    .pill.red {
+      color: var(--red);
+      background: rgba(196, 61, 50, 0.08);
+      border-color: rgba(196, 61, 50, 0.24);
+    }
+
+    .player-pane {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-width: 0;
+      max-height: calc(100vh - 57px);
+      overflow: auto;
+    }
+
+    .video-wrap {
+      background: #0c0f13;
+      padding: 16px;
+    }
+
+    .video-frame {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #10151c;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      display: grid;
+      place-items: center;
+      color: #aeb8c5;
+    }
+
+    iframe {
+      border: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .watch-tools {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .current-card,
+    .notes-card,
+    .processing-card,
+    .job-card,
+    .skill-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .current-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+
+    .url-line {
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+      margin-top: 6px;
+    }
+
+    .button-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .field-group {
+      display: grid;
+      gap: 7px;
+      margin-bottom: 12px;
+    }
+
+    label {
+      font-size: 12px;
+      font-weight: 750;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .skill-option {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      background: #fff;
+    }
+
+    .skill-option input {
+      width: 16px;
+      height: 16px;
+      min-height: 16px;
+      margin-top: 3px;
+    }
+
+    .skill-name {
+      font-size: 14px;
+      font-weight: 800;
+      margin-bottom: 3px;
+    }
+
+    .skill-desc {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .state-line {
+      display: grid;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .timeline-item {
+      display: grid;
+      grid-template-columns: 86px 1fr;
+      gap: 10px;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+    }
+
+    .timeline-time {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 750;
+    }
+
+    .timeline-body {
+      min-width: 0;
+    }
+
+    .timeline-title {
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 2px;
+    }
+
+    .timeline-detail {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .prompt-preview {
+      background: #11161d;
+      color: #d7e0ea;
+      border-radius: var(--radius);
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      min-height: 150px;
+      overflow: auto;
+      white-space: pre-wrap;
+      border: 1px solid #263140;
+    }
+
+    .job-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .job {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: #fff;
+    }
+
+    .job-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .job-title {
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .progress {
+      height: 7px;
+      background: var(--panel-2);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      width: 58%;
+      background: var(--violet);
+      border-radius: inherit;
+    }
+
+    .log {
+      margin-top: 10px;
+      background: #f6f8fb;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: #3f4955;
+      padding: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .empty {
+      min-height: 280px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 32px;
+    }
+
+    .empty-inner {
+      max-width: 420px;
+      color: #aeb8c5;
+    }
+
+    .empty-inner svg {
+      margin-bottom: 12px;
+    }
+
+    @media (max-width: 1180px) {
+      .layout {
+        grid-template-columns: 320px minmax(0, 1fr);
+      }
+
+      .action-pane {
+        grid-column: 1 / -1;
+        max-height: none;
+        border-top: 1px solid var(--line);
+      }
+    }
+
+    @media (max-width: 760px) {
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .layout {
+        display: block;
+      }
+
+      .queue-pane,
+      .player-pane,
+      .action-pane {
+        max-height: none;
+      }
+
+      .queue-item {
+        grid-template-columns: 112px 1fr;
+      }
+
+      .current-head {
+        display: grid;
+      }
+
+      h3 {
+        font-size: 17px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><i data-lucide="play-square"></i></div>
+        <h1>Video Intake Console</h1>
+      </div>
+      <div class="top-status">
+        <span class="dot"></span>
+        <span>Local Claude Code route configured as mock</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="queue-pane">
+        <div class="section-title">
+          <h2>Queue</h2>
+          <span class="counter" id="queueCount">3 items</span>
+        </div>
+
+        <section class="import-box" aria-label="Import video or playlist">
+          <div class="field-group">
+            <label for="videoUrl">YouTube URL</label>
+            <div class="input-row">
+              <input id="videoUrl" type="url" placeholder="https://www.youtube.com/watch?v=...">
+              <button class="icon-btn" id="addVideo" title="Add to queue" aria-label="Add to queue">
+                <i data-lucide="plus"></i>
+              </button>
+            </div>
+          </div>
+          <button class="secondary-btn" id="mockPlaylist" type="button">
+            <i data-lucide="list-plus"></i>
+            Load sample playlist
+          </button>
+        </section>
+
+        <div class="filter-row" id="filterRow" aria-label="Queue filters"></div>
+
+        <div class="queue-list" id="queueList"></div>
+      </aside>
+
+      <main class="player-pane">
+        <section class="video-wrap">
+          <div class="video-frame" id="videoFrame"></div>
+        </section>
+
+        <section class="watch-tools">
+          <div class="current-card">
+            <div class="current-head">
+              <div>
+                <h3 id="currentTitle">Select a queue item</h3>
+                <div class="url-line" id="currentUrl"></div>
+              </div>
+              <div class="button-row">
+                <button class="icon-btn" title="Mark watched" aria-label="Mark watched" id="markWatched">
+                  <i data-lucide="check"></i>
+                </button>
+                <button class="icon-btn" title="Skip" aria-label="Skip" id="skipItem">
+                  <i data-lucide="x"></i>
+                </button>
+              </div>
+            </div>
+            <div class="button-row">
+              <span class="pill blue" id="watchStatePill">watch: new</span>
+              <span class="pill violet" id="processingStatePill">processing: unprocessed</span>
+              <span class="pill amber">source: YouTube</span>
+              <span class="pill green">queue persisted later</span>
+            </div>
+          </div>
+
+          <div class="notes-card">
+            <div class="field-group">
+              <label for="watchNotes">Watch notes</label>
+              <textarea id="watchNotes" placeholder="Timestamp notes, claims, names, or why this video might matter."></textarea>
+            </div>
+          </div>
+
+          <div class="processing-card">
+            <div class="section-title">
+              <h2>Processing</h2>
+              <span class="counter" id="processingCount">0 runs</span>
+            </div>
+            <div class="state-line" id="processingSummary"></div>
+            <div class="timeline" id="processingHistory"></div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="action-pane">
+        <div class="section-title">
+          <h2>Skill Action</h2>
+          <span class="counter">Claude Code local</span>
+        </div>
+
+        <section class="skill-card">
+          <div class="field-group">
+            <label>Available skills</label>
+            <label class="skill-option">
+              <input type="radio" name="skill" value="integrate-source" checked>
+              <span>
+                <span class="skill-name">/integrate-source</span>
+                <span class="skill-desc">Transcribe if needed, score relevance across monitoring docs, update living docs and dossier pieces when warranted.</span>
+              </span>
+            </label>
+            <label class="skill-option">
+              <input type="radio" name="skill" value="dossier-scan">
+              <span>
+                <span class="skill-name">/dossier scan</span>
+                <span class="skill-desc">Use the current source as dossier context, focused on the currently published dossier corpus.</span>
+              </span>
+            </label>
+            <label class="skill-option">
+              <input type="radio" name="skill" value="transcribe">
+              <span>
+                <span class="skill-name">/transcribe</span>
+                <span class="skill-desc">Create a local transcript and attach it to the queue item for later decisions.</span>
+              </span>
+            </label>
+            <label class="skill-option">
+              <input type="radio" name="skill" value="custom">
+              <span>
+                <span class="skill-name">Custom prompt</span>
+                <span class="skill-desc">Send video context, notes, and your freeform instruction to Claude Code without a preset skill.</span>
+              </span>
+            </label>
+          </div>
+
+          <div class="field-group">
+            <label for="extraPrompt">Extra direction</label>
+            <textarea id="extraPrompt">Focus on implications for inference economics and AI labs monitoring. Do not rewrite dossier prose unless the video changes a published thesis.</textarea>
+          </div>
+
+          <button class="primary-btn" id="runSkill" type="button">
+            <i data-lucide="send"></i>
+            Queue background run
+          </button>
+        </section>
+
+        <section class="job-card" style="margin-top:14px">
+          <div class="section-title">
+            <h2>Invocation Preview</h2>
+            <button class="icon-btn" title="Copy invocation" aria-label="Copy invocation" id="copyPreview">
+              <i data-lucide="copy"></i>
+            </button>
+          </div>
+          <pre class="prompt-preview" id="promptPreview"></pre>
+        </section>
+
+        <section class="job-card" style="margin-top:14px">
+          <div class="section-title">
+            <h2>Background Jobs</h2>
+            <span class="counter" id="jobCount">1 active</span>
+          </div>
+          <div class="job-list" id="jobList"></div>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    const skills = {
+      "integrate-source": {
+        label: "/integrate-source",
+        cwd: "/Users/rene/projects/living-doc-compositor",
+        template: "/integrate-source {{videoUrl}}"
+      },
+      "dossier-scan": {
+        label: "/dossier scan",
+        cwd: "/Users/rene/projects/living-doc-compositor",
+        template: "/integrate-source {{videoUrl}}\\n\\nAfter source assessment, report whether the current published dossier corpus should be refreshed."
+      },
+      "transcribe": {
+        label: "/transcribe",
+        cwd: "/Users/rene/projects/living-doc-compositor",
+        template: "/transcribe {{videoUrl}}"
+      },
+      "custom": {
+        label: "custom prompt",
+        cwd: "/Users/rene/projects",
+        template: "Use this YouTube source as context: {{videoUrl}}"
+      }
+    };
+
+    const filters = [
+      { id: "decision", label: "Needs decision" },
+      { id: "all", label: "All" },
+      { id: "unprocessed", label: "Unprocessed" },
+      { id: "queued", label: "Queued" },
+      { id: "transcribed", label: "Transcribed" },
+      { id: "needs_review", label: "Needs review" },
+      { id: "integrated", label: "Integrated" },
+      { id: "failed", label: "Failed" },
+      { id: "skipped", label: "Skipped" }
+    ];
+
+    const decisionStates = new Set(["unprocessed", "transcribed", "needs_review", "failed"]);
+    let activeFilter = "decision";
+
+    const queue = [
+      {
+        id: "v-1",
+        title: "Frontier lab economics and inference demand",
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        videoId: "dQw4w9WgXcQ",
+        watchState: "watching",
+        processingState: "transcribing",
+        source: "Morning playlist",
+        notes: "Good candidate for inference economics. Check whether the claims are concrete enough for indicators.",
+        history: [
+          {
+            time: "09:55",
+            title: "/integrate-source queued",
+            detail: "Local Claude Code run started with extra direction focused on inference economics."
+          },
+          {
+            time: "09:58",
+            title: "Transcription in progress",
+            detail: "Transcript will become the source blob before relevance scoring."
+          }
+        ]
+      },
+      {
+        id: "v-2",
+        title: "Datacenter buildout constraints and AI power markets",
+        url: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+        videoId: "jNQXAC9IVRw",
+        watchState: "new",
+        processingState: "unprocessed",
+        source: "Morning playlist",
+        notes: "",
+        history: []
+      },
+      {
+        id: "v-3",
+        title: "Evaluation benchmarks, model behavior, and policy claims",
+        url: "https://www.youtube.com/watch?v=ysz5S6PUM-U",
+        videoId: "ysz5S6PUM-U",
+        watchState: "watched",
+        processingState: "needs_review",
+        source: "Manual",
+        notes: "Likely relevant to eval ecosystem. Review before allowing dossier prose changes.",
+        history: [
+          {
+            time: "Yesterday",
+            title: "/transcribe completed",
+            detail: "Readable transcript saved. Awaiting decision on integration."
+          },
+          {
+            time: "Today",
+            title: "Review required",
+            detail: "Potentially touches eval methodology, but needs human judgment before edits."
+          }
+        ]
+      }
+    ];
+
+    const jobs = [
+      {
+        videoItemId: "v-1",
+        title: "/integrate-source running",
+        status: "transcribing",
+        progress: 58,
+        log: "cwd: /Users/rene/projects/living-doc-compositor\\nclaude -p /integrate-source <video-url>\\nStep: resolving YouTube metadata..."
+      }
+    ];
+
+    let currentId = queue.find((item) => decisionStates.has(item.processingState))?.id || queue[0].id;
+
+    const els = {
+      queueList: document.getElementById("queueList"),
+      queueCount: document.getElementById("queueCount"),
+      filterRow: document.getElementById("filterRow"),
+      videoFrame: document.getElementById("videoFrame"),
+      currentTitle: document.getElementById("currentTitle"),
+      currentUrl: document.getElementById("currentUrl"),
+      watchStatePill: document.getElementById("watchStatePill"),
+      processingStatePill: document.getElementById("processingStatePill"),
+      processingCount: document.getElementById("processingCount"),
+      processingSummary: document.getElementById("processingSummary"),
+      processingHistory: document.getElementById("processingHistory"),
+      watchNotes: document.getElementById("watchNotes"),
+      extraPrompt: document.getElementById("extraPrompt"),
+      promptPreview: document.getElementById("promptPreview"),
+      jobList: document.getElementById("jobList"),
+      jobCount: document.getElementById("jobCount"),
+      videoUrl: document.getElementById("videoUrl")
+    };
+
+    function parseYouTubeId(url) {
+      try {
+        const parsed = new URL(url);
+        if (parsed.hostname.includes("youtu.be")) return parsed.pathname.slice(1);
+        if (parsed.searchParams.get("v")) return parsed.searchParams.get("v");
+        const embed = parsed.pathname.match(/\/embed\/([^/?]+)/);
+        if (embed) return embed[1];
+      } catch {
+        return "";
+      }
+      return "";
+    }
+
+    function currentItem() {
+      return queue.find((item) => item.id === currentId) || queue[0];
+    }
+
+    function saveCurrentNotes() {
+      const item = currentItem();
+      if (item) item.notes = els.watchNotes.value;
+    }
+
+    function selectedSkill() {
+      return document.querySelector("input[name='skill']:checked").value;
+    }
+
+    function matchesFilter(item, filterId) {
+      if (filterId === "all") return true;
+      if (filterId === "decision") return decisionStates.has(item.processingState);
+      if (filterId === "skipped") return item.watchState === "skipped";
+      return item.processingState === filterId;
+    }
+
+    function filteredQueue() {
+      return queue.filter((item) => matchesFilter(item, activeFilter));
+    }
+
+    function renderFilters() {
+      els.filterRow.innerHTML = filters.map((filter) => {
+        const active = filter.id === activeFilter ? " active" : "";
+        const count = queue.filter((item) => matchesFilter(item, filter.id)).length;
+        return `<button class="filter-chip${active}" data-filter="${filter.id}">${escapeHtml(filter.label)} <span>${count}</span></button>`;
+      }).join("");
+      document.querySelectorAll(".filter-chip").forEach((button) => {
+        button.addEventListener("click", () => {
+          saveCurrentNotes();
+          activeFilter = button.dataset.filter;
+          const visible = filteredQueue();
+          if (visible.length && !visible.some((item) => item.id === currentId)) {
+            currentId = visible[0].id;
+          }
+          renderAll();
+        });
+      });
+    }
+
+    function renderQueue() {
+      const visible = filteredQueue();
+      els.queueCount.textContent = `${visible.length}/${queue.length} shown`;
+      els.queueList.innerHTML = visible.map((item) => {
+        const active = item.id === currentId ? " active" : "";
+        const thumb = item.videoId
+          ? `<img src="https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg" alt="">`
+          : `<i data-lucide="video"></i>`;
+        const processingClass = pillClassForProcessing(item.processingState);
+        return `
+          <button class="queue-item${active}" data-id="${item.id}">
+            <span class="thumb">${thumb}</span>
+            <span class="item-text">
+              <span class="item-title">${escapeHtml(item.title)}</span>
+              <span class="item-meta">
+                <span>${escapeHtml(item.source)}</span>
+                <span class="pill blue">${escapeHtml(item.watchState)}</span>
+                <span class="pill ${processingClass}">${escapeHtml(item.processingState.replaceAll("_", " "))}</span>
+              </span>
+            </span>
+          </button>
+        `;
+      }).join("") || `
+        <div class="empty">
+          <div class="empty-inner">
+            <i data-lucide="filter"></i>
+            <div>No videos match this filter.</div>
+          </div>
+        </div>
+      `;
+      document.querySelectorAll(".queue-item").forEach((button) => {
+        button.addEventListener("click", () => {
+          saveCurrentNotes();
+          currentId = button.dataset.id;
+          renderAll();
+        });
+      });
+    }
+
+    function renderCurrent() {
+      const item = currentItem();
+      if (!item) return;
+      els.currentTitle.textContent = item.title;
+      els.currentUrl.textContent = item.url;
+      els.watchStatePill.textContent = `watch: ${item.watchState}`;
+      els.processingStatePill.textContent = `processing: ${item.processingState.replaceAll("_", " ")}`;
+      els.processingStatePill.className = `pill ${pillClassForProcessing(item.processingState)}`;
+      els.watchNotes.value = item.notes || "";
+      if (item.videoId) {
+        els.videoFrame.innerHTML = `<iframe src="https://www.youtube.com/embed/${item.videoId}" title="${escapeAttr(item.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+      } else {
+        els.videoFrame.innerHTML = `
+          <div class="empty">
+            <div class="empty-inner">
+              <i data-lucide="video"></i>
+              <div>No playable YouTube video selected.</div>
+            </div>
+          </div>
+        `;
+      }
+      renderProcessingHistory(item);
+    }
+
+    function renderProcessingHistory(item) {
+      const runs = item.history || [];
+      els.processingCount.textContent = `${runs.length} ${runs.length === 1 ? "run" : "runs"}`;
+      els.processingSummary.innerHTML = `
+        <div>Watch state: <strong>${escapeHtml(item.watchState)}</strong></div>
+        <div>Processing state: <strong>${escapeHtml(item.processingState.replaceAll("_", " "))}</strong></div>
+      `;
+      els.processingHistory.innerHTML = runs.map((entry) => `
+        <div class="timeline-item">
+          <div class="timeline-time">${escapeHtml(entry.time)}</div>
+          <div class="timeline-body">
+            <div class="timeline-title">${escapeHtml(entry.title)}</div>
+            <div class="timeline-detail">${escapeHtml(entry.detail)}</div>
+          </div>
+        </div>
+      `).join("") || `
+        <div class="timeline-item">
+          <div class="timeline-time">Now</div>
+          <div class="timeline-body">
+            <div class="timeline-title">No processing yet</div>
+            <div class="timeline-detail">Choose a skill action when this video is worth transcribing, scanning, or integrating.</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function pillClassForProcessing(state) {
+      if (state === "integrated" || state === "transcribed") return "green";
+      if (state === "queued" || state === "transcribing" || state === "running_skill") return "amber";
+      if (state === "needs_review") return "violet";
+      if (state === "failed") return "red";
+      return "";
+    }
+
+    function buildInvocation() {
+      const item = currentItem();
+      const skill = skills[selectedSkill()];
+      const base = skill.template.replaceAll("{{videoUrl}}", item?.url || "<video-url>");
+      const notes = els.watchNotes.value.trim();
+      const extra = els.extraPrompt.value.trim();
+      return [
+        `cwd: ${skill.cwd}`,
+        "",
+        `claude -p <<'PROMPT'`,
+        base,
+        "",
+        "Video context:",
+        `- title: ${item?.title || ""}`,
+        `- url: ${item?.url || ""}`,
+        `- watchState: ${item?.watchState || ""}`,
+        `- processingState: ${item?.processingState || ""}`,
+        notes ? `- watchNotes: ${notes}` : "- watchNotes: none yet",
+        "",
+        "Extra user direction:",
+        extra || "none",
+        "PROMPT"
+      ].join("\\n");
+    }
+
+    function renderPreview() {
+      els.promptPreview.textContent = buildInvocation();
+    }
+
+    function renderJobs() {
+      els.jobCount.textContent = `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}`;
+      els.jobList.innerHTML = jobs.map((job) => `
+        <div class="job">
+          <div class="job-top">
+            <div class="job-title">${escapeHtml(job.title)}</div>
+            <span class="pill amber">${escapeHtml(job.status)}</span>
+          </div>
+          <div class="progress"><span style="width:${job.progress}%"></span></div>
+          <div class="log">${escapeHtml(job.log)}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderAll() {
+      renderFilters();
+      renderQueue();
+      renderCurrent();
+      renderPreview();
+      renderJobs();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function addVideoFromInput() {
+      const url = els.videoUrl.value.trim();
+      if (!url) return;
+      const id = parseYouTubeId(url);
+      const item = {
+        id: `v-${Date.now()}`,
+        title: id ? `YouTube video ${id}` : "Unresolved YouTube source",
+        url,
+        videoId: id,
+        watchState: "new",
+        processingState: "unprocessed",
+        source: "Manual",
+        notes: "",
+        history: []
+      };
+      queue.unshift(item);
+      currentId = item.id;
+      els.videoUrl.value = "";
+      renderAll();
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replaceAll("`", "&#096;");
+    }
+
+    document.getElementById("addVideo").addEventListener("click", addVideoFromInput);
+    els.videoUrl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") addVideoFromInput();
+    });
+
+    document.getElementById("mockPlaylist").addEventListener("click", () => {
+      const imported = [
+        ["v-pl-1", "Playlist item: open source model economics", "https://www.youtube.com/watch?v=aqz-KE-bpKQ", "aqz-KE-bpKQ"],
+        ["v-pl-2", "Playlist item: AI evaluation failure modes", "https://www.youtube.com/watch?v=ScMzIvxBSi4", "ScMzIvxBSi4"],
+        ["v-pl-3", "Playlist item: protocol and agent tooling discussion", "https://www.youtube.com/watch?v=YE7VzlLtp-4", "YE7VzlLtp-4"]
+      ].map(([id, title, url, videoId]) => ({
+        id,
+        title,
+        url,
+        videoId,
+        watchState: "new",
+        processingState: "unprocessed",
+        source: "Imported playlist",
+        notes: "",
+        history: []
+      }));
+      queue.unshift(...imported);
+      currentId = imported[0].id;
+      renderAll();
+    });
+
+    document.getElementById("markWatched").addEventListener("click", () => {
+      const item = currentItem();
+      if (item) item.watchState = "watched";
+      renderAll();
+    });
+
+    document.getElementById("skipItem").addEventListener("click", () => {
+      const item = currentItem();
+      if (item) item.watchState = "skipped";
+      renderAll();
+    });
+
+    document.getElementById("runSkill").addEventListener("click", () => {
+      const skill = skills[selectedSkill()];
+      const item = currentItem();
+      if (!item) return;
+      saveCurrentNotes();
+      item.processingState = selectedSkill() === "transcribe" ? "queued" : "running_skill";
+      item.history = item.history || [];
+      item.history.unshift({
+        time: "Now",
+        title: `${skill.label} queued`,
+        detail: "Background run created from current video context, watch notes, and extra direction."
+      });
+      jobs.unshift({
+        videoItemId: item.id,
+        title: `${skill.label} queued`,
+        status: "mock run",
+        progress: 14,
+        log: buildInvocation()
+      });
+      renderAll();
+    });
+
+    document.getElementById("copyPreview").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(buildInvocation());
+      } catch {
+        // Clipboard is unavailable from some file:// contexts.
+      }
+    });
+
+    document.querySelectorAll("input[name='skill']").forEach((input) => {
+      input.addEventListener("change", renderPreview);
+    });
+    els.watchNotes.addEventListener("input", () => {
+      saveCurrentNotes();
+      renderPreview();
+    });
+    els.extraPrompt.addEventListener("input", renderPreview);
+
+    renderAll();
+  </script>
+</body>
+</html>
