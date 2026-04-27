@@ -240,13 +240,18 @@ function renderProcessing(item) {
 }
 
 function renderActions() {
+  const shortDescriptions = {
+    'integrate-source': 'Assess and integrate',
+    'dossier-scan': 'Dossier relevance scan',
+    transcribe: 'Transcript only',
+    custom: 'Use your prompt',
+  };
   els.skillOptions.innerHTML = state.actions.map((action) => `
     <label class="skill-option">
       <input type="radio" name="skill" value="${escapeHtml(action.id)}" ${action.id === state.selectedAction ? 'checked' : ''} ${action.available ? '' : 'disabled'}>
       <span>
         <span class="skill-name">${escapeHtml(action.label)}${action.available ? '' : ' unavailable'}</span>
-        <span class="skill-desc">${escapeHtml(action.description || '')}</span>
-        <span class="skill-desc">cwd: ${escapeHtml(action.cwd || '')} · source: ${escapeHtml(action.source || '')}</span>
+        <span class="skill-desc">${escapeHtml(shortDescriptions[action.id] || action.description || '')}</span>
       </span>
     </label>`).join('');
   document.querySelectorAll('input[name="skill"]').forEach((input) => {
