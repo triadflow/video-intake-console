@@ -101,6 +101,8 @@ async function loadState() {
   }
   state.queue ||= [];
   state.jobs ||= [];
+  state.removedVideos ||= [];
+  state.playlistSubscriptions ||= [];
   return state;
 }
 
@@ -230,6 +232,16 @@ function findQueueItemByVideoId(videoId) {
   return state.queue.find((item) => item.videoId && item.videoId === videoId);
 }
 
+function findRemovedVideoByVideoId(videoId) {
+  return state.removedVideos.find((item) => item.videoId && item.videoId === videoId);
+}
+
+function forgetRemovedVideo(videoId) {
+  const before = state.removedVideos.length;
+  state.removedVideos = state.removedVideos.filter((item) => item.videoId !== videoId);
+  return before !== state.removedVideos.length;
+}
+
 function itemFromVideo({ parsed, metadata, source }) {
   const videoId = metadata.videoId || parsed.videoId;
   return {
@@ -253,6 +265,93 @@ function itemFromVideo({ parsed, metadata, source }) {
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
+}
+
+function playlistUrlFromId(playlistId) {
+  return `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
+}
+
+function upsertPlaylistSubscription({ playlistId, url, title }) {
+  let subscription = state.playlistSubscriptions.find((item) => item.playlistId === playlistId);
+  if (!subscription) {
+    subscription = {
+      id: makeId('playlist'),
+      playlistId,
+      url: url || playlistUrlFromId(playlistId),
+      title: title || `Playlist ${playlistId}`,
+      createdAt: nowIso(),
+      lastCheckedAt: null,
+      lastStats: null,
+      status: 'new',
+      error: '',
+    };
+    state.playlistSubscriptions.unshift(subscription);
+  } else {
+    subscription.url = url || subscription.url || playlistUrlFromId(playlistId);
+    subscription.title = title || subscription.title;
+  }
+  subscription.updatedAt = nowIso();
+  return subscription;
+}
+
+async function refreshPlaylistSubscription(subscription, { save = true } = {}) {
+  if (!commandAvailable('yt-dlp')) throw new Error('yt-dlp is required for playlist refresh and is not available on PATH');
+  const info = await runJsonCommand('yt-dlp', ['--flat-playlist', '--dump-single-json', subscription.url], 90_000);
+  const parsed = parseYoutube(subscription.url);
+  const playlistId = parsed.playlistId || subscription.playlistId;
+  subscription.playlistId = playlistId;
+  subscription.title = info.title || subscription.title || `Playlist ${playlistId}`;
+  subscription.url = subscription.url || playlistUrlFromId(playlistId);
+
+  const stats = { added: 0, alreadyQueued: 0, dismissed: 0, skipped: 0, failed: 0 };
+  const added = [];
+  const skipped = { alreadyQueued: [], dismissed: [], failed: [] };
+  const entries = Array.isArray(info.entries) ? info.entries : [];
+  for (const entry of entries) {
+    const videoId = entry.id || '';
+    if (!videoId) {
+      stats.skipped++;
+      stats.failed++;
+      continue;
+    }
+    if (findQueueItemByVideoId(videoId)) {
+      stats.alreadyQueued++;
+      skipped.alreadyQueued.push(videoId);
+      continue;
+    }
+    if (findRemovedVideoByVideoId(videoId)) {
+      stats.dismissed++;
+      skipped.dismissed.push(videoId);
+      continue;
+    }
+    const itemParsed = {
+      input: `https://www.youtube.com/watch?v=${videoId}`,
+      canonicalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      videoId,
+      playlistId,
+    };
+    const metadata = {
+      title: entry.title || `YouTube video ${videoId}`,
+      channel: entry.channel || entry.uploader || '',
+      thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+      duration: entry.duration || null,
+      metadataSource: 'yt-dlp-flat-playlist',
+    };
+    added.push(itemFromVideo({
+      parsed: itemParsed,
+      metadata,
+      source: subscription.title ? `Playlist: ${subscription.title}` : `Playlist: ${playlistId}`,
+    }));
+    stats.added++;
+  }
+  if (added.length) state.queue.unshift(...added);
+  subscription.lastCheckedAt = nowIso();
+  subscription.lastStats = stats;
+  subscription.status = 'ok';
+  subscription.error = '';
+  subscription.updatedAt = nowIso();
+  if (save) await saveState();
+  return { subscription, added, skipped, stats };
 }
 
 function buildPrompt(action, item, extraPrompt) {
@@ -538,6 +637,23 @@ async function recoverInterruptedJobs() {
   if (changed) await saveState();
 }
 
+async function refreshAllPlaylistsOnStartup() {
+  await loadState();
+  for (const subscription of state.playlistSubscriptions) {
+    try {
+      await refreshPlaylistSubscription(subscription);
+      console.log(`[playlist] refreshed ${subscription.title || subscription.playlistId}`);
+    } catch (err) {
+      subscription.status = 'failed';
+      subscription.error = err.message;
+      subscription.lastCheckedAt = nowIso();
+      subscription.updatedAt = nowIso();
+      await saveState();
+      console.error(`[playlist] refresh failed for ${subscription.title || subscription.playlistId}: ${err.message}`);
+    }
+  }
+}
+
 async function handleApi(req, res, pathname) {
   await loadState();
   if (req.method === 'GET' && pathname === '/api/health') {
@@ -552,7 +668,12 @@ async function handleApi(req, res, pathname) {
     return;
   }
   if (req.method === 'GET' && pathname === '/api/queue') {
-    sendJson(res, 200, { queue: state.queue, jobs: state.jobs });
+    sendJson(res, 200, {
+      queue: state.queue,
+      jobs: state.jobs,
+      playlistSubscriptions: state.playlistSubscriptions,
+      removedVideos: state.removedVideos,
+    });
     return;
   }
   if (req.method === 'POST' && pathname === '/api/queue/video') {
@@ -566,6 +687,7 @@ async function handleApi(req, res, pathname) {
     }
     const metadata = await resolveVideoMetadata(body.url, parsed);
     const item = itemFromVideo({ parsed, metadata, source: body.source || 'Manual' });
+    forgetRemovedVideo(item.videoId);
     state.queue.unshift(item);
     await saveState();
     sendJson(res, 201, { item, duplicate: false });
@@ -575,40 +697,22 @@ async function handleApi(req, res, pathname) {
     const body = await readJson(req);
     const parsed = parseYoutube(body.url || '');
     if (!parsed.playlistId) throw new Error('No YouTube playlist id found');
-    if (!commandAvailable('yt-dlp')) throw new Error('yt-dlp is required for playlist import and is not available on PATH');
-    const info = await runJsonCommand('yt-dlp', ['--flat-playlist', '--dump-single-json', body.url], 90_000);
-    const entries = Array.isArray(info.entries) ? info.entries : [];
-    const added = [];
-    const skipped = [];
-    for (const entry of entries) {
-      const videoId = entry.id || '';
-      if (!videoId) continue;
-      const itemParsed = {
-        input: `https://www.youtube.com/watch?v=${videoId}`,
-        canonicalUrl: `https://www.youtube.com/watch?v=${videoId}`,
-        videoId,
-        playlistId: parsed.playlistId,
-      };
-      if (findQueueItemByVideoId(videoId)) {
-        skipped.push(videoId);
-        continue;
-      }
-      const metadata = {
-        title: entry.title || `YouTube video ${videoId}`,
-        channel: entry.channel || entry.uploader || '',
-        thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
-        duration: entry.duration || null,
-        metadataSource: 'yt-dlp-flat-playlist',
-      };
-      added.push(itemFromVideo({
-        parsed: itemParsed,
-        metadata,
-        source: info.title ? `Playlist: ${info.title}` : `Playlist: ${parsed.playlistId}`,
-      }));
-    }
-    state.queue.unshift(...added);
-    await saveState();
-    sendJson(res, 201, { added, skipped, playlist: { id: parsed.playlistId, title: info.title || '' } });
+    const subscription = upsertPlaylistSubscription({ playlistId: parsed.playlistId, url: body.url });
+    const result = await refreshPlaylistSubscription(subscription);
+    sendJson(res, 201, result);
+    return;
+  }
+  if (req.method === 'GET' && pathname === '/api/playlists') {
+    sendJson(res, 200, { playlistSubscriptions: state.playlistSubscriptions });
+    return;
+  }
+  const playlistRefresh = pathname.match(/^\/api\/playlists\/([^/]+)\/refresh$/);
+  if (req.method === 'POST' && playlistRefresh) {
+    const id = decodeURIComponent(playlistRefresh[1]);
+    const subscription = state.playlistSubscriptions.find((item) => item.id === id || item.playlistId === id);
+    if (!subscription) throw new Error('Playlist subscription not found');
+    const result = await refreshPlaylistSubscription(subscription);
+    sendJson(res, 200, result);
     return;
   }
   const queuePatch = pathname.match(/^\/api\/queue\/([^/]+)$/);
@@ -622,6 +726,16 @@ async function handleApi(req, res, pathname) {
       return;
     }
     const [removed] = state.queue.splice(itemIndex, 1);
+    forgetRemovedVideo(removed.videoId);
+    state.removedVideos.unshift({
+      id: makeId('removed'),
+      videoId: removed.videoId,
+      title: removed.title,
+      canonicalUrl: removed.canonicalUrl,
+      playlistId: removed.playlistId || '',
+      source: removed.source || '',
+      removedAt: nowIso(),
+    });
     const relatedJobs = state.jobs.filter((job) => job.itemId === itemId);
     for (const job of relatedJobs) {
       job.orphanedQueueItem = {
@@ -703,4 +817,5 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`Video Intake Console running at http://127.0.0.1:${PORT}`);
   console.log(`Data directory: ${DATA_DIR}`);
   processNextJob().catch((err) => console.error('[job-queue] startup failure', err));
+  refreshAllPlaylistsOnStartup().catch((err) => console.error('[playlist] startup refresh failure', err));
 });

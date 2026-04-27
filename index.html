@@ -253,6 +253,34 @@
       gap: 8px;
     }
 
+    .playlist-list {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 14px;
+    }
+
+    .playlist-item {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      box-shadow: 0 4px 16px rgba(23, 27, 32, 0.04);
+    }
+
+    .playlist-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: flex-start;
+      margin-bottom: 6px;
+    }
+
+    .playlist-title {
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
     .filter-row {
       display: flex;
       gap: 6px;
@@ -715,6 +743,8 @@
             Import playlist
           </button>
         </section>
+
+        <div class="playlist-list" id="playlistList"></div>
 
         <div class="filter-row" id="filterRow" aria-label="Queue filters"></div>
 

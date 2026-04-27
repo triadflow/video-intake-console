@@ -15,6 +15,8 @@ const decisionStates = new Set(['unprocessed', 'transcribed', 'needs_review', 'f
 let state = {
   queue: [],
   jobs: [],
+  playlists: [],
+  removedVideos: [],
   actions: [],
   warnings: [],
   claudeAvailable: false,
@@ -29,6 +31,7 @@ let renderedVideoId = null;
 const els = {
   topStatus: document.querySelector('.top-status span:last-child'),
   queueList: document.getElementById('queueList'),
+  playlistList: document.getElementById('playlistList'),
   queueCount: document.getElementById('queueCount'),
   filterRow: document.getElementById('filterRow'),
   videoFrame: document.getElementById('videoFrame'),
@@ -149,6 +152,34 @@ function renderQueue() {
       state.currentId = button.dataset.id;
       render();
     });
+  });
+}
+
+function renderPlaylists() {
+  els.playlistList.innerHTML = state.playlists.map((playlist) => {
+    const stats = playlist.lastStats || {};
+    const checked = playlist.lastCheckedAt ? new Date(playlist.lastCheckedAt).toLocaleString() : 'never';
+    return `
+      <div class="playlist-item">
+        <div class="playlist-top">
+          <div>
+            <div class="playlist-title">${escapeHtml(playlist.title || playlist.playlistId)}</div>
+            <div class="item-meta">Last checked: ${escapeHtml(checked)}</div>
+          </div>
+          <button class="icon-btn playlist-refresh" title="Refresh playlist" aria-label="Refresh playlist" data-playlist-id="${escapeHtml(playlist.id)}">
+            <i data-lucide="refresh-cw"></i>
+          </button>
+        </div>
+        <div class="item-meta">
+          <span class="pill green">${Number(stats.added || 0)} new</span>
+          <span class="pill">${Number(stats.alreadyQueued || 0)} queued</span>
+          <span class="pill amber">${Number(stats.dismissed || 0)} removed</span>
+          ${playlist.status === 'failed' ? `<span class="pill red">failed</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+  document.querySelectorAll('.playlist-refresh').forEach((button) => {
+    button.addEventListener('click', () => refreshPlaylist(button.dataset.playlistId).catch((err) => alert(err.message)));
   });
 }
 
@@ -279,6 +310,7 @@ function renderStatus() {
 
 function render() {
   renderStatus();
+  renderPlaylists();
   renderFilters();
   renderQueue();
   renderCurrent();
@@ -295,6 +327,8 @@ async function refresh() {
     ...health,
     queue: queue.queue,
     jobs: queue.jobs,
+    playlists: queue.playlistSubscriptions || [],
+    removedVideos: queue.removedVideos || [],
   };
   if (!state.currentId || !state.queue.some((item) => item.id === state.currentId)) {
     state.currentId = state.queue.find((item) => decisionStates.has(item.processingState))?.id || state.queue[0]?.id || '';
@@ -331,10 +365,15 @@ async function importPlaylist() {
     });
     state.currentId = result.added[0]?.id || state.currentId;
     await refresh();
-    alert(`Imported ${result.added.length}; skipped ${result.skipped.length} duplicates.`);
+    alert(`Imported ${result.stats.added}; already queued ${result.stats.alreadyQueued}; previously removed ${result.stats.dismissed}.`);
   } finally {
     els.mockPlaylist.disabled = false;
   }
+}
+
+async function refreshPlaylist(playlistId) {
+  await api(`/api/playlists/${encodeURIComponent(playlistId)}/refresh`, { method: 'POST' });
+  await refresh();
 }
 
 async function patchCurrent(patch) {
