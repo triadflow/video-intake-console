@@ -74,6 +74,8 @@ const MIME = {
 
 let state = null;
 const activeJobs = new Map();
+let currentJobId = null;
+let workerStarting = false;
 
 function nowIso() {
   return new Date().toISOString();
@@ -342,7 +344,7 @@ async function startJob({ itemId, actionId, extraPrompt }) {
   if (!action.available) throw new Error(`Action is unavailable: ${action.label}`);
   if (!commandAvailable('claude')) throw new Error('claude CLI is not available on PATH');
 
-  const duplicate = state.jobs.find((job) => job.itemId === itemId && job.actionId === actionId && ['queued', 'running'].includes(job.status));
+  const duplicate = state.jobs.find((job) => job.itemId === itemId && job.actionId === actionId && ['queued', 'waiting', 'running'].includes(job.status));
   if (duplicate) throw new Error(`A ${action.label} job is already active for this video`);
 
   const prompt = buildPrompt(action, item, extraPrompt || '');
@@ -353,7 +355,7 @@ async function startJob({ itemId, actionId, extraPrompt }) {
     actionLabel: action.label,
     cwd: action.cwd,
     prompt,
-    status: 'queued',
+    status: 'waiting',
     stdout: '',
     stderr: '',
     exitCode: null,
@@ -372,23 +374,36 @@ async function startJob({ itemId, actionId, extraPrompt }) {
     id: makeId('hist'),
     time: nowIso(),
     title: `${action.label} queued`,
-    status: 'queued',
-    detail: 'Job persisted before spawning local Claude Code.',
+    status: 'waiting',
+    detail: 'Job persisted and is waiting for the serial worker.',
     jobId: job.id,
   });
   item.updatedAt = nowIso();
   await saveState();
 
-  runJob(job.id).catch((err) => {
-    console.error('[job] unhandled failure', err);
-  });
+  processNextJob().catch((err) => console.error('[job-queue] unhandled failure', err));
   return job;
+}
+
+async function processNextJob() {
+  await loadState();
+  if (currentJobId || workerStarting) return;
+  workerStarting = true;
+  try {
+    const next = [...state.jobs].reverse().find((job) => job.status === 'waiting' || job.status === 'queued');
+    if (!next) return;
+    currentJobId = next.id;
+    await runJob(next.id);
+  } finally {
+    workerStarting = false;
+  }
 }
 
 async function runJob(jobId) {
   await loadState();
   const job = state.jobs.find((entry) => entry.id === jobId);
   if (!job) return;
+  if (!['waiting', 'queued'].includes(job.status)) return;
   const item = state.queue.find((entry) => entry.id === job.itemId);
   const action = CONFIG.actions.find((entry) => entry.id === job.actionId);
   job.status = 'running';
@@ -396,6 +411,15 @@ async function runJob(jobId) {
   job.updatedAt = nowIso();
   if (item) {
     item.processingState = job.actionId === 'transcribe' ? 'transcribing' : 'running_skill';
+    item.history ||= [];
+    item.history.unshift({
+      id: makeId('hist'),
+      time: nowIso(),
+      title: `${job.actionLabel} started`,
+      status: 'running',
+      detail: 'Serial worker started local Claude Code for this job.',
+      jobId: job.id,
+    });
     item.updatedAt = nowIso();
   }
   await saveState();
@@ -476,6 +500,42 @@ async function finishJob(job, item, action, code, error, durationMs) {
     item.updatedAt = nowIso();
   }
   await saveState();
+  if (currentJobId === job.id) currentJobId = null;
+  processNextJob().catch((err) => console.error('[job-queue] unhandled failure', err));
+}
+
+async function recoverInterruptedJobs() {
+  await loadState();
+  let changed = false;
+  for (const job of state.jobs) {
+    if (job.status === 'queued') {
+      job.status = 'waiting';
+      job.updatedAt = nowIso();
+      changed = true;
+    }
+    if (job.status === 'running') {
+      job.status = 'failed';
+      job.error = 'Server restarted while this job was running; job marked interrupted.';
+      job.finishedAt = nowIso();
+      job.updatedAt = nowIso();
+      const item = state.queue.find((entry) => entry.id === job.itemId);
+      if (item) {
+        item.processingState = 'failed';
+        item.history ||= [];
+        item.history.unshift({
+          id: makeId('hist'),
+          time: nowIso(),
+          title: `${job.actionLabel} interrupted`,
+          status: 'failed',
+          detail: job.error,
+          jobId: job.id,
+        });
+        item.updatedAt = nowIso();
+      }
+      changed = true;
+    }
+  }
+  if (changed) await saveState();
 }
 
 async function handleApi(req, res, pathname) {
@@ -556,7 +616,7 @@ async function handleApi(req, res, pathname) {
     const itemId = queuePatch[1];
     const itemIndex = state.queue.findIndex((entry) => entry.id === itemId);
     if (itemIndex < 0) throw new Error('Queue item not found');
-    const activeJob = state.jobs.find((job) => job.itemId === itemId && ['queued', 'running'].includes(job.status));
+    const activeJob = state.jobs.find((job) => job.itemId === itemId && ['queued', 'waiting', 'running'].includes(job.status));
     if (activeJob) {
       sendError(res, 409, 'Cannot remove a video while a job is active for it', { jobId: activeJob.id });
       return;
@@ -638,7 +698,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 await loadState();
+await recoverInterruptedJobs();
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`Video Intake Console running at http://127.0.0.1:${PORT}`);
   console.log(`Data directory: ${DATA_DIR}`);
+  processNextJob().catch((err) => console.error('[job-queue] startup failure', err));
 });

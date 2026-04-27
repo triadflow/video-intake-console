@@ -259,11 +259,12 @@ function renderPreview() {
 
 function renderJobs() {
   els.jobCount.textContent = `${state.jobs.length} ${state.jobs.length === 1 ? 'job' : 'jobs'}`;
+  const waitingOrder = [...state.jobs].reverse().filter((job) => job.status === 'waiting' || job.status === 'queued');
   els.jobList.innerHTML = state.jobs.map((job) => `
     <div class="job">
       <div class="job-top">
-        <div class="job-title">${escapeHtml(job.actionLabel || job.actionId)}</div>
-        <span class="pill ${job.status === 'failed' ? 'red' : 'amber'}">${escapeHtml(job.status)}</span>
+        <div class="job-title">${escapeHtml(job.actionLabel || job.actionId)}${job.status === 'waiting' || job.status === 'queued' ? ` · #${waitingOrder.findIndex((entry) => entry.id === job.id) + 1} waiting` : ''}</div>
+        <span class="pill ${job.status === 'failed' ? 'red' : job.status === 'succeeded' ? 'green' : 'amber'}">${escapeHtml(job.status)}</span>
       </div>
       <div class="log">${escapeHtml((job.stdout || job.stderr || job.error || 'No output yet.').slice(-1200))}</div>
     </div>`).join('');
