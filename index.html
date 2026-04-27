@@ -314,22 +314,38 @@
       border-color: rgba(29, 111, 216, 0.35);
     }
 
-    .queue-item {
-      width: 100%;
-      text-align: left;
+    .queue-card {
+      position: relative;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: 10px;
-      display: grid;
-      grid-template-columns: 96px 1fr;
-      gap: 10px;
       box-shadow: 0 4px 16px rgba(23, 27, 32, 0.04);
     }
 
-    .queue-item.active {
+    .queue-card.active {
       border-color: var(--blue);
       box-shadow: 0 0 0 3px rgba(29, 111, 216, 0.13);
+    }
+
+    .queue-item {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 0;
+      border-radius: var(--radius);
+      padding: 10px 50px 10px 10px;
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 10px;
+    }
+
+    .queue-copy {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 32px;
+      min-height: 32px;
+      z-index: 1;
     }
 
     .thumb {

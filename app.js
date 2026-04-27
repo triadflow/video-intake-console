@@ -109,6 +109,76 @@ function formatState(value) {
   return String(value || '').replaceAll('_', ' ');
 }
 
+function formatTimestamp(value) {
+  return value ? new Date(value).toISOString() : '';
+}
+
+function relatedJobs(itemId) {
+  return state.jobs.filter((job) => job.itemId === itemId);
+}
+
+function buildQueueItemContext(item) {
+  const jobs = relatedJobs(item.id);
+  const artifacts = item.artifacts || [];
+  const recentHistory = (item.history || []).slice(0, 5);
+  const lines = [
+    'Video context:',
+    `- title: ${item.title || ''}`,
+    `- url: ${item.canonicalUrl || item.inputUrl || ''}`,
+    `- videoId: ${item.videoId || ''}`,
+    `- channel: ${item.channel || ''}`,
+    `- source: ${item.source || ''}`,
+    item.playlistId ? `- playlistId: ${item.playlistId}` : '',
+    `- watchState: ${item.watchState || ''}`,
+    `- processingState: ${item.processingState || ''}`,
+    `- reviewOutcome: ${item.reviewOutcome || ''}`,
+    item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
+    `- queueItemId: ${item.id}`,
+    `- createdAt: ${formatTimestamp(item.createdAt)}`,
+    `- updatedAt: ${formatTimestamp(item.updatedAt)}`,
+    '',
+    'Recent jobs:',
+    ...(jobs.length ? jobs.slice(0, 5).map((job) => {
+      const bits = [
+        `- ${job.actionLabel || job.actionId}: ${job.status}`,
+        `jobId=${job.id}`,
+        job.startedAt ? `started=${formatTimestamp(job.startedAt)}` : '',
+        job.finishedAt ? `finished=${formatTimestamp(job.finishedAt)}` : '',
+        job.durationMs ? `durationMs=${job.durationMs}` : '',
+        job.error ? `error=${job.error}` : '',
+        job.claudeSession?.logPath ? `claudeSession=${job.claudeSession.logPath}` : '',
+      ].filter(Boolean);
+      return bits.join(' | ');
+    }) : ['- none']),
+    '',
+    'Artifacts:',
+    ...(artifacts.length ? artifacts.slice(0, 5).map((artifact) => {
+      const pathValue = artifact.stdoutPath || artifact.path || artifact.url || artifact.summary || artifact.id;
+      return `- ${artifact.type || 'artifact'}: ${pathValue || ''}`;
+    }) : ['- none']),
+    '',
+    'Recent history:',
+    ...(recentHistory.length ? recentHistory.map((entry) => `- ${formatTimestamp(entry.time)} ${entry.title || ''}: ${entry.status || ''}${entry.detail ? ` - ${entry.detail}` : ''}`) : ['- none']),
+  ];
+  return lines.filter((line) => line !== '').join('\n');
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
+}
+
 function renderFilters() {
   els.filterRow.innerHTML = filters.map((filter) => {
     const count = state.queue.filter((item) => matchesFilter(item, filter.id)).length;
@@ -134,17 +204,22 @@ function renderQueue() {
     const active = item.id === state.currentId ? ' active' : '';
     const thumb = item.thumbnail || (item.videoId ? `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg` : '');
     return `
-      <button class="queue-item${active}" data-id="${item.id}">
-        <span class="thumb">${thumb ? `<img src="${escapeHtml(thumb)}" alt="">` : '<i data-lucide="video"></i>'}</span>
-        <span class="item-text">
-          <span class="item-title">${escapeHtml(item.title)}</span>
-          <span class="item-meta">
-            <span>${escapeHtml(item.source || 'Manual')}</span>
-            <span class="pill blue">${escapeHtml(item.watchState)}</span>
-            <span class="pill ${pillClassForProcessing(item.processingState)}">${escapeHtml(formatState(item.processingState))}</span>
+      <div class="queue-card${active}">
+        <button class="queue-item" data-id="${item.id}" type="button">
+          <span class="thumb">${thumb ? `<img src="${escapeHtml(thumb)}" alt="">` : '<i data-lucide="video"></i>'}</span>
+          <span class="item-text">
+            <span class="item-title">${escapeHtml(item.title)}</span>
+            <span class="item-meta">
+              <span>${escapeHtml(item.source || 'Manual')}</span>
+              <span class="pill blue">${escapeHtml(item.watchState)}</span>
+              <span class="pill ${pillClassForProcessing(item.processingState)}">${escapeHtml(formatState(item.processingState))}</span>
+            </span>
           </span>
-        </span>
-      </button>`;
+        </button>
+        <button class="icon-btn queue-copy" data-id="${item.id}" type="button" title="Copy video context" aria-label="Copy video context">
+          <i data-lucide="copy"></i>
+        </button>
+      </div>`;
   }).join('') || `
     <div class="empty">
       <div class="empty-inner"><i data-lucide="filter"></i><div>No videos match this filter.</div></div>
@@ -153,6 +228,13 @@ function renderQueue() {
     button.addEventListener('click', () => {
       state.currentId = button.dataset.id;
       render();
+    });
+  });
+  document.querySelectorAll('.queue-copy').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const item = state.queue.find((entry) => entry.id === button.dataset.id);
+      if (!item) return;
+      await copyText(buildQueueItemContext(item));
     });
   });
 }
