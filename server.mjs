@@ -46,6 +46,19 @@ const CONFIG = {
       template: '/transcribe {{videoUrl}}',
       successProcessingState: 'transcribed',
       timeoutMs: 30 * 60 * 1000,
+      permissionMode: 'acceptEdits',
+      addDirs: ['/tmp', '/private/tmp'],
+      allowedTools: [
+        'mcp__plugin_projectgraph_projectgraph__transcription_create',
+        'ToolSearch',
+        'Skill',
+        'Read(//tmp/**)',
+        'Read(//private/tmp/**)',
+        'Bash(yt-dlp *)',
+        'Bash(python3 *)',
+        'Bash(rm /tmp/transcribe-*)',
+        'Bash(rm /private/tmp/transcribe-*)',
+      ],
     },
     {
       id: 'custom',
@@ -562,6 +575,8 @@ async function startJob({ itemId, actionId, extraPrompt }) {
     prompt,
     timeoutMs: action.timeoutMs || DEFAULT_RUN_TIMEOUT_MS,
     permissionMode: action.permissionMode || 'default',
+    addDirs: action.addDirs || [],
+    allowedTools: action.allowedTools || [],
     status: 'waiting',
     stdout: '',
     stderr: '',
@@ -646,6 +661,13 @@ async function runJob(jobId) {
   const timeoutMs = job.timeoutMs || action?.timeoutMs || DEFAULT_RUN_TIMEOUT_MS;
   const permissionMode = job.permissionMode || action?.permissionMode || 'default';
   const claudeArgs = ['-p', '--permission-mode', permissionMode, '-'];
+  for (const dir of job.addDirs || action?.addDirs || []) {
+    claudeArgs.splice(-1, 0, '--add-dir', dir);
+  }
+  const allowedTools = job.allowedTools || action?.allowedTools || [];
+  if (allowedTools.length) {
+    claudeArgs.splice(-1, 0, '--allowedTools', allowedTools.join(','));
+  }
   const child = spawn('claude', claudeArgs, {
     cwd: job.cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
