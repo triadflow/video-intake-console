@@ -10,8 +10,8 @@
   "sourceCoverage": "Issue #1 and sub-issues hydrated; source commit 96bdafe implements the local app, persistence, skill discovery, runner seam, and API verification probes.",
   "updated": "2026-04-27T02:29:03.412Z",
   "runState": {
-    "phase": "implementation-verification",
-    "documentReady": false,
+    "phase": "finalized-partial-delivery",
+    "documentReady": true,
     "objectiveReady": false,
     "targetRepo": "triadflow/video-intake-console",
     "focalIssue": "https://github.com/triadflow/video-intake-console/issues/1",
@@ -24,7 +24,26 @@
       "linked run document"
     ],
     "lastSourceCommit": "96bdafe",
-    "nextObjectiveAction": "Push the implementation branch, open a draft PR, update issue #1 with verification evidence, and record the remaining downstream integration proof gap."
+    "implementationBranch": "issue-1-video-intake-console-app",
+    "pullRequest": "https://github.com/triadflow/video-intake-console/pull/9",
+    "issueUpdate": "https://github.com/triadflow/video-intake-console/issues/1#issuecomment-4323808654",
+    "verificationEvidence": [
+      "npm run check",
+      "npm start served http://127.0.0.1:4177",
+      "GET /api/health detected claude, yt-dlp, and configured actions",
+      "POST /api/queue/video imported a YouTube URL and resolved metadata",
+      "PATCH /api/queue/:id persisted notes and watch state",
+      "duplicate video add returned the existing queue item",
+      "POST /api/jobs ran a harmless custom prompt through local claude -p - and captured output/status",
+      "rg found no direct Anthropic/OpenAI API usage in source files"
+    ],
+    "remainingObjectiveGaps": [
+      "Public playlist import route needs a dedicated verification run with a known public playlist.",
+      "Missing-CLI, non-zero exit, and timeout runner paths are implemented but not externally verified.",
+      "The first real /integrate-source or dossier-focused run against living-doc-compositor has not been executed from the app.",
+      "Browser-level screenshot/interaction smoke coverage has not been added."
+    ],
+    "nextObjectiveAction": "Review draft PR #9, run remaining playlist/negative-path/downstream checks, then decide whether to merge or extend the PR."
   },
   "objective": "Implement GitHub issue #1 in triadflow/video-intake-console: build the local video intake console into a working local app with durable queue, YouTube import, skill action configuration, local Claude Code runner, per-video processing history/artifacts/review workflow, and first living-doc-compositor integration path.",
   "successCondition": "Issue #1 epic acceptance criteria are satisfied by committed source changes, verification evidence, pushed branch, opened or updated PR, issue update, and linked run document. If the full epic cannot be completed in this run, objectiveReady=false must be recorded with evidenced blockers, completed implementation evidence, and source-system follow-up state.",
@@ -386,7 +405,8 @@
           "currentCoverage": "npm run check passes; npm start served http://127.0.0.1:4177; curl verified index.html and app.js are served.",
           "nextStep": "Run browser-level smoke test if needed before merge.",
           "gaps": [
-            "No Playwright/browser screenshot verification has been added."
+            "No Playwright/browser screenshot verification has been added.",
+            "Draft PR #9 carries the implementation for review."
           ]
         },
         {
@@ -401,7 +421,8 @@
           "currentCoverage": "Video add, metadata resolution, note/watchState patch, duplicate detection, and job history persistence verified through API.",
           "nextStep": "Add automated tests or scripted fixtures for state transitions.",
           "gaps": [
-            "Restart was represented by persisted state and server restart, but there is not yet an automated persistence test."
+            "Restart was represented by persisted state and server restart, but there is not yet an automated persistence test.",
+            "Draft PR #9 carries the implementation for review."
           ]
         },
         {
@@ -416,7 +437,8 @@
           "currentCoverage": "Custom action job invoked claude -p -, completed with exitCode 0, captured stdout, duration, and changed-file status; rg found no Anthropic/OpenAI API usage.",
           "nextStep": "Add negative-path verification for missing CLI, non-zero exit, and timeout.",
           "gaps": [
-            "Failure and timeout paths are implemented but not yet externally verified."
+            "Failure and timeout paths are implemented but not yet externally verified.",
+            "Draft PR #9 carries the implementation for review."
           ]
         },
         {
@@ -431,7 +453,8 @@
           "currentCoverage": "Actions are configured with cwd /Users/rene/projects/living-doc-compositor and discovered integrate-source skill metadata.",
           "nextStep": "Run a harmless or explicitly approved /integrate-source invocation and record downstream git status.",
           "gaps": [
-            "No real living-doc-compositor skill run has been executed from this app yet."
+            "No real living-doc-compositor skill run has been executed from this app yet.",
+            "Draft PR #9 carries the implementation for review."
           ]
         }
       ]
