@@ -2,7 +2,7 @@
 import http from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -18,6 +18,7 @@ const RUN_TIMEOUT_MS = Number(process.env.VIDEO_INTAKE_RUN_TIMEOUT_MS || 10 * 60
 
 const LIVING_DOC_CWD = '/Users/rene/projects/living-doc-compositor';
 const USER_CLAUDE_SKILLS = path.join(process.env.HOME || '/Users/rene', '.claude/skills');
+const CLAUDE_PROJECTS_DIR = path.join(process.env.HOME || '/Users/rene', '.claude/projects');
 
 const CONFIG = {
   skillRoots: [
@@ -420,6 +421,116 @@ async function changedFiles(cwd) {
   return { ok: true, files };
 }
 
+function claudeProjectDirForCwd(cwd) {
+  return path.join(CLAUDE_PROJECTS_DIR, cwd.replaceAll('/', '-'));
+}
+
+async function listClaudeSessionFiles(cwd, startedAt, finishedAt = null) {
+  const projectDir = claudeProjectDirForCwd(cwd);
+  if (!existsSync(projectDir)) return { projectDir, files: [] };
+  const startedMs = Date.parse(startedAt || '') || 0;
+  const finishedMs = finishedAt ? Date.parse(finishedAt) + 30_000 : Date.now() + 30_000;
+  const dirents = await readdir(projectDir, { withFileTypes: true });
+  const files = [];
+  for (const dirent of dirents) {
+    if (!dirent.isFile() || !dirent.name.endsWith('.jsonl')) continue;
+    const logPath = path.join(projectDir, dirent.name);
+    const info = await stat(logPath);
+    if (info.mtimeMs < startedMs - 10_000 || info.birthtimeMs > finishedMs) continue;
+    files.push({ logPath, mtimeMs: info.mtimeMs, birthtimeMs: info.birthtimeMs, size: info.size });
+  }
+  files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return { projectDir, files };
+}
+
+function summarizeClaudeSessionJsonl(raw, file) {
+  const summary = {
+    status: 'linked',
+    logPath: file.logPath,
+    sessionId: '',
+    modifiedAt: new Date(file.mtimeMs).toISOString(),
+    size: file.size,
+    eventCount: 0,
+    userMessageCount: 0,
+    assistantMessageCount: 0,
+    toolUseCount: 0,
+    toolResultCount: 0,
+    thinkingBlockCount: 0,
+    toolNames: [],
+    lastTimestamp: '',
+  };
+  const toolNames = new Set();
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    summary.eventCount += 1;
+    summary.sessionId ||= entry.sessionId || '';
+    summary.lastTimestamp = entry.timestamp || summary.lastTimestamp;
+    if (entry.type === 'user') summary.userMessageCount += 1;
+    if (entry.type === 'assistant') summary.assistantMessageCount += 1;
+    const content = entry.message?.content;
+    const blocks = Array.isArray(content) ? content : [];
+    for (const block of blocks) {
+      if (block.type === 'tool_use') {
+        summary.toolUseCount += 1;
+        if (block.name) toolNames.add(block.name);
+      }
+      if (block.type === 'tool_result') summary.toolResultCount += 1;
+      if (block.type === 'thinking') summary.thinkingBlockCount += 1;
+    }
+  }
+  summary.toolNames = [...toolNames].slice(0, 8);
+  return summary;
+}
+
+async function refreshClaudeSessionForJob(job) {
+  if (!job?.cwd || !job.startedAt) return false;
+  const { projectDir, files } = await listClaudeSessionFiles(job.cwd, job.startedAt, job.finishedAt);
+  const promptNeedle = (job.prompt || '').split('\n').find((line) => line.trim())?.trim() || '';
+  for (const file of files) {
+    let raw = '';
+    try {
+      raw = await readFile(file.logPath, 'utf8');
+    } catch {
+      continue;
+    }
+    if (promptNeedle && !raw.includes(promptNeedle)) continue;
+    const nextSession = { ...summarizeClaudeSessionJsonl(raw, file), projectDir };
+    const changed = JSON.stringify(job.claudeSession || {}) !== JSON.stringify(nextSession);
+    job.claudeSession = nextSession;
+    return changed;
+  }
+  const nextSession = {
+    status: 'locating',
+    projectDir,
+    logPath: '',
+    sessionId: '',
+    eventCount: 0,
+    toolUseCount: 0,
+    toolResultCount: 0,
+    thinkingBlockCount: 0,
+    toolNames: [],
+  };
+  const changed = JSON.stringify(job.claudeSession || {}) !== JSON.stringify(nextSession);
+  job.claudeSession = nextSession;
+  return changed;
+}
+
+async function refreshClaudeSessionsForJobs(jobs) {
+  let changed = false;
+  for (const job of jobs) {
+    if (!job.startedAt) continue;
+    if (job.claudeSession?.status === 'linked' && job.status !== 'running') continue;
+    changed = await refreshClaudeSessionForJob(job) || changed;
+  }
+  if (changed) await saveState();
+}
+
 async function appendLog(job, stream, text) {
   const field = stream === 'stderr' ? 'stderr' : 'stdout';
   job[field] += text;
@@ -500,6 +611,17 @@ async function runJob(jobId) {
   job.status = 'running';
   job.startedAt = nowIso();
   job.updatedAt = nowIso();
+  job.claudeSession = {
+    status: 'locating',
+    projectDir: claudeProjectDirForCwd(job.cwd),
+    logPath: '',
+    sessionId: '',
+    eventCount: 0,
+    toolUseCount: 0,
+    toolResultCount: 0,
+    thinkingBlockCount: 0,
+    toolNames: [],
+  };
   if (item) {
     item.processingState = job.actionId === 'transcribe' ? 'transcribing' : 'running_skill';
     item.history ||= [];
@@ -558,6 +680,7 @@ async function finishJob(job, item, action, code, error, durationMs) {
   if (action?.cwd && existsSync(path.join(action.cwd, '.git'))) {
     job.downstreamStatus = await changedFiles(action.cwd);
   }
+  await refreshClaudeSessionForJob(job);
 
   if (item) {
     const changed = job.downstreamStatus?.files?.length > 0;
@@ -660,6 +783,7 @@ async function handleApi(req, res, pathname) {
     return;
   }
   if (req.method === 'GET' && pathname === '/api/queue') {
+    await refreshClaudeSessionsForJobs(state.jobs.slice(0, 10));
     sendJson(res, 200, {
       queue: state.queue,
       jobs: state.jobs,
@@ -762,6 +886,7 @@ async function handleApi(req, res, pathname) {
     return;
   }
   if (req.method === 'GET' && pathname === '/api/jobs') {
+    await refreshClaudeSessionsForJobs(state.jobs.slice(0, 20));
     sendJson(res, 200, { jobs: state.jobs });
     return;
   }
@@ -769,6 +894,7 @@ async function handleApi(req, res, pathname) {
   if (req.method === 'GET' && jobMatch) {
     const job = state.jobs.find((entry) => entry.id === jobMatch[1]);
     if (!job) throw new Error('Job not found');
+    if (await refreshClaudeSessionForJob(job)) await saveState();
     sendJson(res, 200, { job });
     return;
   }

@@ -303,8 +303,23 @@ function renderJobs() {
         <div class="job-title">${escapeHtml(job.actionLabel || job.actionId)}${job.status === 'waiting' || job.status === 'queued' ? ` · #${waitingOrder.findIndex((entry) => entry.id === job.id) + 1} waiting` : ''}</div>
         <span class="pill ${job.status === 'failed' ? 'red' : job.status === 'succeeded' ? 'green' : 'amber'}">${escapeHtml(job.status)}</span>
       </div>
+      ${renderClaudeSession(job)}
       <div class="log">${escapeHtml((job.stdout || job.stderr || job.error || 'No output yet.').slice(-1200))}</div>
     </div>`).join('');
+}
+
+function renderClaudeSession(job) {
+  const session = job.claudeSession;
+  if (!session) return '';
+  const pathLabel = session.logPath ? session.logPath.split('/').pop() : 'locating session log';
+  const tools = session.toolNames?.length ? ` · tools: ${session.toolNames.join(', ')}` : '';
+  const counts = session.logPath
+    ? `${session.eventCount || 0} events · ${session.toolUseCount || 0} tool calls · ${session.toolResultCount || 0} results · ${session.thinkingBlockCount || 0} thinking blocks`
+    : 'waiting for Claude JSONL';
+  return `
+    <div class="job-meta" title="${escapeHtml(session.logPath || session.projectDir || '')}">
+      Claude session: ${escapeHtml(pathLabel)} · ${escapeHtml(counts)}${escapeHtml(tools)}
+    </div>`;
 }
 
 function renderStatus() {
