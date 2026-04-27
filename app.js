@@ -23,7 +23,7 @@ let state = {
   ytDlpAvailable: false,
   activeFilter: 'decision',
   currentId: '',
-  selectedAction: 'integrate-source',
+  selectedAction: 'transcribe',
 };
 
 let renderedVideoId = null;
@@ -243,7 +243,6 @@ function renderProcessing(item) {
 
 function renderActions() {
   const shortDescriptions = {
-    'integrate-source': 'Assess and integrate',
     transcribe: 'Transcript only',
     custom: 'Use your prompt',
   };

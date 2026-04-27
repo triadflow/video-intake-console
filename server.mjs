@@ -27,15 +27,6 @@ const CONFIG = {
   ],
   actions: [
     {
-      id: 'integrate-source',
-      skillName: 'integrate-source',
-      label: '/integrate-source',
-      description: 'Transcribe if needed, score relevance across monitoring docs, update living docs and dossier pieces when warranted.',
-      cwd: LIVING_DOC_CWD,
-      template: '/integrate-source {{videoUrl}}',
-      successProcessingState: 'needs_review',
-    },
-    {
       id: 'transcribe',
       skillName: 'transcribe',
       label: '/transcribe',
