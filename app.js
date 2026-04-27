@@ -24,6 +24,8 @@ let state = {
   selectedAction: 'integrate-source',
 };
 
+let renderedVideoId = null;
+
 const els = {
   topStatus: document.querySelector('.top-status span:last-child'),
   queueList: document.getElementById('queueList'),
@@ -155,7 +157,10 @@ function renderCurrent() {
     els.currentTitle.textContent = 'Add a video to begin';
     els.currentUrl.textContent = '';
     els.watchNotes.value = '';
-    els.videoFrame.innerHTML = '<div class="empty"><div class="empty-inner"><i data-lucide="video"></i><div>No playable YouTube video selected.</div></div></div>';
+    if (renderedVideoId !== null) {
+      renderedVideoId = null;
+      els.videoFrame.innerHTML = '<div class="empty"><div class="empty-inner"><i data-lucide="video"></i><div>No playable YouTube video selected.</div></div></div>';
+    }
     return;
   }
   els.currentTitle.textContent = item.title;
@@ -166,9 +171,13 @@ function renderCurrent() {
   if (document.activeElement !== els.watchNotes) {
     els.watchNotes.value = item.notes || '';
   }
-  els.videoFrame.innerHTML = item.videoId
-    ? `<iframe src="https://www.youtube.com/embed/${escapeHtml(item.videoId)}" title="${escapeHtml(item.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
-    : '<div class="empty"><div class="empty-inner"><i data-lucide="video"></i><div>No playable YouTube video selected.</div></div></div>';
+  if (item.videoId && renderedVideoId !== item.videoId) {
+    renderedVideoId = item.videoId;
+    els.videoFrame.innerHTML = `<iframe src="https://www.youtube.com/embed/${escapeHtml(item.videoId)}" title="${escapeHtml(item.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+  } else if (!item.videoId && renderedVideoId !== null) {
+    renderedVideoId = null;
+    els.videoFrame.innerHTML = '<div class="empty"><div class="empty-inner"><i data-lucide="video"></i><div>No playable YouTube video selected.</div></div></div>';
+  }
   renderProcessing(item);
 }
 
