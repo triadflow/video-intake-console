@@ -29,7 +29,7 @@ const CONFIG = {
     {
       id: 'integrate-source',
       skillName: 'integrate-source',
-      label: 'Assess source',
+      label: '/integrate-source',
       description: 'Assess the source against monitoring living docs and dossier relevance.',
       cwd: LIVING_DOC_CWD,
       template: '/integrate-source {{videoUrl}}',
