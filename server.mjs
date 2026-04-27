@@ -14,7 +14,7 @@ const DATA_DIR = process.env.VIDEO_INTAKE_DATA_DIR || path.join(__dirname, '.vid
 const STATE_PATH = path.join(DATA_DIR, 'state.json');
 const LOG_DIR = path.join(DATA_DIR, 'logs');
 const MAX_BODY = 2_000_000;
-const RUN_TIMEOUT_MS = Number(process.env.VIDEO_INTAKE_RUN_TIMEOUT_MS || 10 * 60 * 1000);
+const DEFAULT_RUN_TIMEOUT_MS = Number(process.env.VIDEO_INTAKE_RUN_TIMEOUT_MS || 10 * 60 * 1000);
 
 const LIVING_DOC_CWD = '/Users/rene/projects/living-doc-compositor';
 const USER_CLAUDE_SKILLS = path.join(process.env.HOME || '/Users/rene', '.claude/skills');
@@ -34,6 +34,8 @@ const CONFIG = {
       cwd: LIVING_DOC_CWD,
       template: '/integrate-source {{videoUrl}}',
       successProcessingState: 'needs_review',
+      timeoutMs: 45 * 60 * 1000,
+      permissionMode: 'acceptEdits',
     },
     {
       id: 'transcribe',
@@ -43,6 +45,7 @@ const CONFIG = {
       cwd: LIVING_DOC_CWD,
       template: '/transcribe {{videoUrl}}',
       successProcessingState: 'transcribed',
+      timeoutMs: 30 * 60 * 1000,
     },
     {
       id: 'custom',
@@ -557,6 +560,8 @@ async function startJob({ itemId, actionId, extraPrompt }) {
     actionLabel: action.label,
     cwd: action.cwd,
     prompt,
+    timeoutMs: action.timeoutMs || DEFAULT_RUN_TIMEOUT_MS,
+    permissionMode: action.permissionMode || 'default',
     status: 'waiting',
     stdout: '',
     stderr: '',
@@ -638,7 +643,10 @@ async function runJob(jobId) {
   await saveState();
 
   const start = Date.now();
-  const child = spawn('claude', ['-p', '-'], {
+  const timeoutMs = job.timeoutMs || action?.timeoutMs || DEFAULT_RUN_TIMEOUT_MS;
+  const permissionMode = job.permissionMode || action?.permissionMode || 'default';
+  const claudeArgs = ['-p', '--permission-mode', permissionMode, '-'];
+  const child = spawn('claude', claudeArgs, {
     cwd: job.cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env },
@@ -648,9 +656,9 @@ async function runJob(jobId) {
   child.stdin.end();
 
   const timer = setTimeout(() => {
-    job.error = `Timed out after ${RUN_TIMEOUT_MS}ms`;
+    job.error = `Timed out after ${timeoutMs}ms`;
     child.kill('SIGTERM');
-  }, RUN_TIMEOUT_MS);
+  }, timeoutMs);
 
   child.stdout.on('data', (chunk) => {
     appendLog(job, 'stdout', chunk.toString()).catch(console.error);
