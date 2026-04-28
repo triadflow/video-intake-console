@@ -24,6 +24,7 @@ let state = {
   ytDlpAvailable: false,
   activeFilter: 'decision',
   activeLabelId: '',
+  labelManagerOpen: false,
   currentId: '',
   selectedAction: 'transcribe',
 };
@@ -46,7 +47,11 @@ const els = {
   processingStatePill: document.getElementById('processingStatePill'),
   resumeStatePill: document.getElementById('resumeStatePill'),
   labelCount: document.getElementById('labelCount'),
-  labelList: document.getElementById('labelList'),
+  currentLabels: document.getElementById('currentLabels'),
+  labelSelect: document.getElementById('labelSelect'),
+  applyLabel: document.getElementById('applyLabel'),
+  labelManager: document.getElementById('labelManager'),
+  labelManagerList: document.getElementById('labelManagerList'),
   labelName: document.getElementById('labelName'),
   labelColor: document.getElementById('labelColor'),
   addLabel: document.getElementById('addLabel'),
@@ -327,12 +332,32 @@ function renderLabels(item) {
   const assigned = new Set(item?.labelIds || []);
   els.labelCount.textContent = `${state.labels.length} ${state.labels.length === 1 ? 'label' : 'labels'}`;
   if (!item) {
-    els.labelList.innerHTML = '<div class="empty-copy">Select a video to apply labels.</div>';
-    return;
+    els.currentLabels.innerHTML = '<div class="empty-copy">Select a video to apply labels.</div>';
+  } else {
+    const currentLabels = labelsForItem(item);
+    els.currentLabels.innerHTML = currentLabels.map((label) => `
+      <span class="label-pill current-label" ${labelPillStyle(label)}>
+        ${escapeHtml(label.name)}
+        <button class="label-remove" type="button" data-remove-label="${escapeHtml(label.id)}" title="Remove label" aria-label="Remove ${escapeHtml(label.name)}">
+          <i data-lucide="x"></i>
+        </button>
+      </span>
+    `).join('') || '<div class="empty-copy">No labels on this video.</div>';
   }
-  els.labelList.innerHTML = state.labels.map((label) => `
+
+  const available = state.labels.filter((label) => !assigned.has(label.id));
+  const fallbackOption = !item
+    ? 'Select a video'
+    : (!state.labels.length ? 'No labels yet' : 'All labels applied');
+  els.labelSelect.innerHTML = available.length
+    ? available.map((label) => `<option value="${escapeHtml(label.id)}">${escapeHtml(label.name)}</option>`).join('')
+    : `<option value="">${escapeHtml(fallbackOption)}</option>`;
+  els.labelSelect.disabled = !item || !available.length;
+  els.applyLabel.disabled = !item || !available.length;
+  els.labelManager.open = state.labelManagerOpen;
+
+  els.labelManagerList.innerHTML = state.labels.map((label) => `
     <div class="label-row" data-label-id="${escapeHtml(label.id)}">
-      <input class="label-apply" type="checkbox" aria-label="Apply ${escapeHtml(label.name)}" ${assigned.has(label.id) ? 'checked' : ''}>
       <input class="label-color-input" type="color" value="${escapeHtml(safeLabelColor(label.color))}" aria-label="Label color">
       <input class="label-name-input" type="text" value="${escapeHtml(label.name)}" aria-label="Label name">
       <button class="icon-btn label-save" type="button" title="Save label" aria-label="Save label">
@@ -342,11 +367,11 @@ function renderLabels(item) {
         <i data-lucide="trash-2"></i>
       </button>
     </div>
-  `).join('') || '<div class="empty-copy">Create a label to start.</div>';
-  document.querySelectorAll('.label-apply').forEach((input) => {
-    input.addEventListener('change', () => {
-      const row = input.closest('.label-row');
-      setCurrentLabel(row.dataset.labelId, input.checked).catch((err) => alert(err.message));
+  `).join('') || '<div class="empty-copy">No labels created yet.</div>';
+
+  document.querySelectorAll('[data-remove-label]').forEach((button) => {
+    button.addEventListener('click', () => {
+      setCurrentLabel(button.dataset.removeLabel, false).catch((err) => alert(err.message));
     });
   });
   document.querySelectorAll('.label-save').forEach((button) => {
@@ -975,11 +1000,20 @@ async function patchCurrent(patch) {
 async function createLabel() {
   const name = els.labelName.value.trim();
   if (!name) return;
-  await api('/api/labels', {
+  const result = await api('/api/labels', {
     method: 'POST',
     body: JSON.stringify({ name, color: els.labelColor.value }),
   });
   els.labelName.value = '';
+  const item = currentItem();
+  if (item && result.label?.id) {
+    const next = new Set(item.labelIds || []);
+    next.add(result.label.id);
+    await api(`/api/queue/${item.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ labelIds: [...next] }),
+    });
+  }
   await refresh();
 }
 
@@ -1009,6 +1043,11 @@ async function setCurrentLabel(labelId, enabled) {
   else next.delete(labelId);
   item.labelIds = [...next];
   await patchCurrent({ labelIds: item.labelIds });
+}
+
+async function applySelectedLabel() {
+  if (!els.labelSelect.value) return;
+  await setCurrentLabel(els.labelSelect.value, true);
 }
 
 function saveWatchNotes(itemId, notes) {
@@ -1107,9 +1146,13 @@ els.videoUrl.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') addVideo().catch((err) => alert(err.message));
 });
 els.mockPlaylist.addEventListener('click', () => importPlaylist().catch((err) => alert(err.message)));
+els.applyLabel.addEventListener('click', () => applySelectedLabel().catch((err) => alert(err.message)));
 els.addLabel.addEventListener('click', () => createLabel().catch((err) => alert(err.message)));
 els.labelName.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') createLabel().catch((err) => alert(err.message));
+});
+els.labelManager.addEventListener('toggle', () => {
+  state.labelManagerOpen = els.labelManager.open;
 });
 document.getElementById('markWatched').addEventListener('click', () => {
   const item = currentItem();
