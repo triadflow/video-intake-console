@@ -211,6 +211,7 @@ async function resolveVideoMetadata(url, parsed) {
       channel: '',
       thumbnail: parsed.videoId ? `https://i.ytimg.com/vi/${parsed.videoId}/mqdefault.jpg` : '',
       duration: null,
+      description: '',
       metadataSource: 'fallback',
     };
   }
@@ -222,6 +223,7 @@ async function resolveVideoMetadata(url, parsed) {
       channel: info.channel || info.uploader || '',
       thumbnail: info.thumbnail || (id ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : ''),
       duration: info.duration || null,
+      description: info.description || '',
       metadataSource: 'yt-dlp',
       videoId: id,
     };
@@ -231,6 +233,7 @@ async function resolveVideoMetadata(url, parsed) {
       channel: '',
       thumbnail: parsed.videoId ? `https://i.ytimg.com/vi/${parsed.videoId}/mqdefault.jpg` : '',
       duration: null,
+      description: '',
       metadataSource: 'fallback',
       metadataError: err.message,
     };
@@ -262,6 +265,7 @@ function itemFromVideo({ parsed, metadata, source }) {
     channel: metadata.channel || '',
     thumbnail: metadata.thumbnail || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
     duration: metadata.duration ?? null,
+    description: metadata.description || '',
     source: source || 'Manual',
     playlistId: parsed.playlistId || '',
     watchState: 'new',
@@ -293,6 +297,25 @@ function formatPlaybackPosition(position) {
   const duration = Math.max(0, Math.floor(Number(position.duration) || 0));
   const formatted = `${seconds}s`;
   return duration ? `${formatted} / ${duration}s` : formatted;
+}
+
+async function refreshQueueItemMetadata(item) {
+  const url = item.canonicalUrl || item.inputUrl;
+  if (!url) throw new Error('Queue item has no video URL');
+  const parsed = parseYoutube(url);
+  if (!parsed.videoId && item.videoId) parsed.videoId = item.videoId;
+  const metadata = await resolveVideoMetadata(url, parsed);
+  item.title = metadata.title || item.title;
+  item.channel = metadata.channel || item.channel || '';
+  item.thumbnail = metadata.thumbnail || item.thumbnail || '';
+  item.duration = metadata.duration ?? item.duration ?? null;
+  item.description = metadata.description || item.description || '';
+  item.metadata = {
+    ...(item.metadata || {}),
+    ...metadata,
+  };
+  item.updatedAt = nowIso();
+  return item;
 }
 
 function upsertPlaylistSubscription({ playlistId, url, title }) {
@@ -359,6 +382,7 @@ async function refreshPlaylistSubscription(subscription, { save = true } = {}) {
       channel: entry.channel || entry.uploader || '',
       thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
       duration: entry.duration || null,
+      description: entry.description || '',
       metadataSource: 'yt-dlp-flat-playlist',
     };
     added.push(itemFromVideo({
@@ -390,6 +414,7 @@ function buildPrompt(action, item, extraPrompt) {
     `- url: ${videoUrl}`,
     `- videoId: ${item.videoId || ''}`,
     `- channel: ${item.channel || ''}`,
+    item.description ? `- description: ${item.description}` : '- description: none saved',
     `- watchState: ${item.watchState}`,
     `- processingState: ${item.processingState}`,
     `- playbackPosition: ${formatPlaybackPosition(item.playbackPosition)}`,
@@ -877,6 +902,15 @@ async function handleApi(req, res, pathname) {
     sendJson(res, 200, result);
     return;
   }
+  const queueMetadata = pathname.match(/^\/api\/queue\/([^/]+)\/metadata$/);
+  if (req.method === 'POST' && queueMetadata) {
+    const item = state.queue.find((entry) => entry.id === queueMetadata[1]);
+    if (!item) throw new Error('Queue item not found');
+    await refreshQueueItemMetadata(item);
+    await saveState();
+    sendJson(res, 200, { item });
+    return;
+  }
   const queuePatch = pathname.match(/^\/api\/queue\/([^/]+)$/);
   if (req.method === 'DELETE' && queuePatch) {
     const itemId = queuePatch[1];
@@ -917,7 +951,7 @@ async function handleApi(req, res, pathname) {
     const body = await readJson(req);
     const item = state.queue.find((entry) => entry.id === queuePatch[1]);
     if (!item) throw new Error('Queue item not found');
-    for (const key of ['watchState', 'processingState', 'notes', 'reviewOutcome', 'playbackPosition']) {
+    for (const key of ['watchState', 'processingState', 'notes', 'reviewOutcome', 'playbackPosition', 'description']) {
       if (Object.hasOwn(body, key)) item[key] = body[key];
     }
     item.updatedAt = nowIso();

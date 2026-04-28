@@ -41,6 +41,7 @@ const els = {
   watchStatePill: document.getElementById('watchStatePill'),
   processingStatePill: document.getElementById('processingStatePill'),
   resumeStatePill: document.getElementById('resumeStatePill'),
+  videoDescription: document.getElementById('videoDescription'),
   watchNotes: document.getElementById('watchNotes'),
   processingCount: document.getElementById('processingCount'),
   processingSummary: document.getElementById('processingSummary'),
@@ -66,6 +67,7 @@ let youtubePlayer = null;
 let renderedVideoKey = '';
 let playbackTimer = null;
 let playbackSaveInFlight = Promise.resolve();
+const descriptionFetches = new Map();
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -179,6 +181,24 @@ function playbackLabel(item) {
   return seconds > 0 ? `resume: ${formatDuration(seconds)}` : 'resume: start';
 }
 
+function shouldFetchDescription(item) {
+  if (!item?.id || !item.videoId) return false;
+  if (String(item.description || '').trim()) return false;
+  if (descriptionFetches.has(item.id)) return false;
+  return true;
+}
+
+function renderDescription(item, status = '') {
+  const description = String(item?.description || '').trim();
+  if (description) {
+    els.videoDescription.textContent = description;
+    els.videoDescription.className = 'description-text';
+    return;
+  }
+  els.videoDescription.textContent = status || 'No description saved.';
+  els.videoDescription.className = 'description-text empty-copy';
+}
+
 function relatedJobs(itemId) {
   return state.jobs.filter((job) => job.itemId === itemId);
 }
@@ -195,6 +215,7 @@ function buildQueueItemContext(item) {
     `- channel: ${item.channel || ''}`,
     `- source: ${item.source || ''}`,
     item.playlistId ? `- playlistId: ${item.playlistId}` : '',
+    item.description ? `- description: ${item.description}` : '- description: none saved',
     `- watchState: ${item.watchState || ''}`,
     `- processingState: ${item.processingState || ''}`,
     `- reviewOutcome: ${item.reviewOutcome || ''}`,
@@ -347,6 +368,7 @@ function renderCurrent() {
     els.currentTitle.textContent = 'Add a video to begin';
     els.currentUrl.textContent = '';
     els.watchNotes.value = '';
+    renderDescription(null);
     destroyYouTubePlayer();
     renderedVideoKey = '';
     els.videoFrame.innerHTML = '<div class="empty"><div class="empty-inner"><i data-lucide="video"></i><div>No playable YouTube video selected.</div></div></div>';
@@ -358,6 +380,7 @@ function renderCurrent() {
   els.processingStatePill.textContent = `processing: ${formatState(item.processingState)}`;
   els.processingStatePill.className = `pill ${pillClassForProcessing(item.processingState)}`;
   els.resumeStatePill.textContent = playbackLabel(item);
+  renderDescription(item, shouldFetchDescription(item) ? 'Fetching description...' : '');
   if (document.activeElement !== els.watchNotes) {
     els.watchNotes.value = item.notes || '';
   }
@@ -369,6 +392,25 @@ function renderCurrent() {
     els.videoFrame.innerHTML = '<div class="empty"><div class="empty-inner"><i data-lucide="video"></i><div>No playable YouTube video selected.</div></div></div>';
   }
   renderProcessing(item);
+  ensureDescription(item);
+}
+
+function ensureDescription(item) {
+  if (!shouldFetchDescription(item)) return;
+  const request = api(`/api/queue/${item.id}/metadata`, { method: 'POST' })
+    .then((result) => {
+      const index = state.queue.findIndex((entry) => entry.id === item.id);
+      if (index >= 0) state.queue[index] = result.item;
+      if (state.currentId === item.id) {
+        renderDescription(result.item);
+        renderPreview();
+      }
+    })
+    .catch((err) => {
+      console.error('[metadata] description fetch failed', err);
+      if (state.currentId === item.id) renderDescription(item, 'No description saved.');
+    });
+  descriptionFetches.set(item.id, request);
 }
 
 function loadYouTubeApi() {
@@ -579,6 +621,7 @@ function buildInvocation() {
     `- url: ${videoUrl}`,
     `- videoId: ${item.videoId || ''}`,
     `- channel: ${item.channel || ''}`,
+    item.description ? `- description: ${item.description}` : '- description: none saved',
     `- watchState: ${item.watchState}`,
     `- processingState: ${item.processingState}`,
     `- playbackPosition: ${playbackLabel(item).replace('resume: ', '')}`,

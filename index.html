@@ -472,6 +472,7 @@
     }
 
     .current-card,
+    .description-card,
     .notes-card,
     .processing-card,
     .job-card,
@@ -503,6 +504,20 @@
       font-size: 13px;
       overflow-wrap: anywhere;
       margin-top: 6px;
+    }
+
+    .description-text {
+      max-height: 220px;
+      overflow: auto;
+      white-space: pre-wrap;
+      color: #3f4955;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .description-text.empty-copy {
+      color: var(--muted);
+      font-style: italic;
     }
 
     .button-row {
@@ -820,6 +835,13 @@
               <span class="pill amber">source: YouTube</span>
               <span class="pill" id="resumeStatePill">resume: start</span>
               <span class="pill green">queue persisted</span>
+            </div>
+          </div>
+
+          <div class="description-card">
+            <div class="field-group">
+              <label for="videoDescription">Description</label>
+              <div class="description-text empty-copy" id="videoDescription">No description saved.</div>
             </div>
           </div>
 
