@@ -268,6 +268,12 @@ function itemFromVideo({ parsed, metadata, source }) {
     processingState: 'unprocessed',
     reviewOutcome: '',
     notes: '',
+    playbackPosition: {
+      seconds: 0,
+      duration: metadata.duration ?? null,
+      completed: false,
+      updatedAt: null,
+    },
     artifacts: [],
     history: [],
     metadata,
@@ -278,6 +284,15 @@ function itemFromVideo({ parsed, metadata, source }) {
 
 function playlistUrlFromId(playlistId) {
   return `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
+}
+
+function formatPlaybackPosition(position) {
+  if (!position) return 'start';
+  if (position.completed) return 'watched';
+  const seconds = Math.max(0, Math.floor(Number(position.seconds) || 0));
+  const duration = Math.max(0, Math.floor(Number(position.duration) || 0));
+  const formatted = `${seconds}s`;
+  return duration ? `${formatted} / ${duration}s` : formatted;
 }
 
 function upsertPlaylistSubscription({ playlistId, url, title }) {
@@ -377,6 +392,7 @@ function buildPrompt(action, item, extraPrompt) {
     `- channel: ${item.channel || ''}`,
     `- watchState: ${item.watchState}`,
     `- processingState: ${item.processingState}`,
+    `- playbackPosition: ${formatPlaybackPosition(item.playbackPosition)}`,
     item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
     '',
     'Prior artifacts:',
@@ -901,7 +917,7 @@ async function handleApi(req, res, pathname) {
     const body = await readJson(req);
     const item = state.queue.find((entry) => entry.id === queuePatch[1]);
     if (!item) throw new Error('Queue item not found');
-    for (const key of ['watchState', 'processingState', 'notes', 'reviewOutcome']) {
+    for (const key of ['watchState', 'processingState', 'notes', 'reviewOutcome', 'playbackPosition']) {
       if (Object.hasOwn(body, key)) item[key] = body[key];
     }
     item.updatedAt = nowIso();

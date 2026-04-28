@@ -26,7 +26,6 @@ let state = {
   selectedAction: 'transcribe',
 };
 
-let renderedVideoId = null;
 let notesSaveTimer = null;
 let notesSaveInFlight = Promise.resolve();
 
@@ -41,6 +40,7 @@ const els = {
   currentUrl: document.getElementById('currentUrl'),
   watchStatePill: document.getElementById('watchStatePill'),
   processingStatePill: document.getElementById('processingStatePill'),
+  resumeStatePill: document.getElementById('resumeStatePill'),
   watchNotes: document.getElementById('watchNotes'),
   processingCount: document.getElementById('processingCount'),
   processingSummary: document.getElementById('processingSummary'),
@@ -55,6 +55,17 @@ const els = {
   runSkill: document.getElementById('runSkill'),
   removeItem: document.getElementById('removeItem'),
 };
+
+const playbackSaveMs = 5000;
+const nearEndSeconds = 10;
+const nearEndRatio = 0.95;
+
+let youtubeApiReady = false;
+let youtubeApiLoading = false;
+let youtubePlayer = null;
+let renderedVideoKey = '';
+let playbackTimer = null;
+let playbackSaveInFlight = Promise.resolve();
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -113,6 +124,61 @@ function formatTimestamp(value) {
   return value ? new Date(value).toISOString() : '';
 }
 
+function playbackKey(item) {
+  if (!item) return '';
+  if (item.videoId) return `youtube:${item.videoId}`;
+  return item.canonicalUrl || item.inputUrl || item.id || '';
+}
+
+function shouldRestartFromBeginning(seconds, duration) {
+  if (!duration || duration < 1) return false;
+  return duration - seconds <= nearEndSeconds || seconds / duration >= nearEndRatio;
+}
+
+function playbackPosition(item) {
+  return item?.playbackPosition || null;
+}
+
+function resumeSecondsFor(item) {
+  const position = playbackPosition(item);
+  if (!position || position.completed) return 0;
+  const seconds = Number(position.seconds) || 0;
+  const duration = Number(position.duration || item.duration) || 0;
+  if (shouldRestartFromBeginning(seconds, duration)) return 0;
+  return Math.max(0, Math.floor(seconds));
+}
+
+function playbackPayload(item, seconds, duration, completed = false) {
+  const safeDuration = Number.isFinite(duration) && duration > 0
+    ? duration
+    : Number(item?.duration || item?.playbackPosition?.duration) || 0;
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const isComplete = completed || shouldRestartFromBeginning(safeSeconds, safeDuration);
+  return {
+    seconds: isComplete ? 0 : Math.floor(safeSeconds),
+    duration: safeDuration ? Math.floor(safeDuration) : 0,
+    completed: isComplete,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hours) return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function playbackLabel(item) {
+  const position = playbackPosition(item);
+  if (!position) return 'resume: start';
+  if (position.completed) return 'resume: watched';
+  const seconds = resumeSecondsFor(item);
+  return seconds > 0 ? `resume: ${formatDuration(seconds)}` : 'resume: start';
+}
+
 function relatedJobs(itemId) {
   return state.jobs.filter((job) => job.itemId === itemId);
 }
@@ -132,6 +198,7 @@ function buildQueueItemContext(item) {
     `- watchState: ${item.watchState || ''}`,
     `- processingState: ${item.processingState || ''}`,
     `- reviewOutcome: ${item.reviewOutcome || ''}`,
+    `- playbackPosition: ${playbackLabel(item).replace('resume: ', '')}`,
     item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
     `- queueItemId: ${item.id}`,
     `- createdAt: ${formatTimestamp(item.createdAt)}`,
@@ -187,6 +254,7 @@ function renderFilters() {
   }).join('');
   document.querySelectorAll('.filter-chip').forEach((button) => {
     button.addEventListener('click', () => {
+      saveCurrentPlaybackPosition();
       state.activeFilter = button.dataset.filter;
       const visible = filteredQueue();
       if (visible.length && !visible.some((item) => item.id === state.currentId)) {
@@ -203,6 +271,10 @@ function renderQueue() {
   els.queueList.innerHTML = visible.map((item) => {
     const active = item.id === state.currentId ? ' active' : '';
     const thumb = item.thumbnail || (item.videoId ? `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg` : '');
+    const resume = resumeSecondsFor(item);
+    const resumePill = item.playbackPosition
+      ? `<span class="pill">${resume > 0 ? `resume ${formatDuration(resume)}` : (item.playbackPosition.completed ? 'resume watched' : 'resume start')}</span>`
+      : '';
     return `
       <div class="queue-card${active}">
         <button class="queue-item" data-id="${item.id}" type="button">
@@ -213,6 +285,7 @@ function renderQueue() {
               <span>${escapeHtml(item.source || 'Manual')}</span>
               <span class="pill blue">${escapeHtml(item.watchState)}</span>
               <span class="pill ${pillClassForProcessing(item.processingState)}">${escapeHtml(formatState(item.processingState))}</span>
+              ${resumePill}
             </span>
           </span>
         </button>
@@ -226,6 +299,7 @@ function renderQueue() {
     </div>`;
   document.querySelectorAll('.queue-item').forEach((button) => {
     button.addEventListener('click', () => {
+      saveCurrentPlaybackPosition();
       state.currentId = button.dataset.id;
       render();
     });
@@ -273,10 +347,9 @@ function renderCurrent() {
     els.currentTitle.textContent = 'Add a video to begin';
     els.currentUrl.textContent = '';
     els.watchNotes.value = '';
-    if (renderedVideoId !== null) {
-      renderedVideoId = null;
-      els.videoFrame.innerHTML = '<div class="empty"><div class="empty-inner"><i data-lucide="video"></i><div>No playable YouTube video selected.</div></div></div>';
-    }
+    destroyYouTubePlayer();
+    renderedVideoKey = '';
+    els.videoFrame.innerHTML = '<div class="empty"><div class="empty-inner"><i data-lucide="video"></i><div>No playable YouTube video selected.</div></div></div>';
     return;
   }
   els.currentTitle.textContent = item.title;
@@ -284,17 +357,160 @@ function renderCurrent() {
   els.watchStatePill.textContent = `watch: ${item.watchState}`;
   els.processingStatePill.textContent = `processing: ${formatState(item.processingState)}`;
   els.processingStatePill.className = `pill ${pillClassForProcessing(item.processingState)}`;
+  els.resumeStatePill.textContent = playbackLabel(item);
   if (document.activeElement !== els.watchNotes) {
     els.watchNotes.value = item.notes || '';
   }
-  if (item.videoId && renderedVideoId !== item.videoId) {
-    renderedVideoId = item.videoId;
-    els.videoFrame.innerHTML = `<iframe src="https://www.youtube.com/embed/${escapeHtml(item.videoId)}" title="${escapeHtml(item.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
-  } else if (!item.videoId && renderedVideoId !== null) {
-    renderedVideoId = null;
+  if (item.videoId) {
+    renderYouTubePlayer(item);
+  } else if (!item.videoId && renderedVideoKey) {
+    destroyYouTubePlayer();
+    renderedVideoKey = '';
     els.videoFrame.innerHTML = '<div class="empty"><div class="empty-inner"><i data-lucide="video"></i><div>No playable YouTube video selected.</div></div></div>';
   }
   renderProcessing(item);
+}
+
+function loadYouTubeApi() {
+  if (youtubeApiReady || youtubeApiLoading) return;
+  youtubeApiLoading = true;
+  const script = document.createElement('script');
+  script.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(script);
+}
+
+window.onYouTubeIframeAPIReady = () => {
+  youtubeApiReady = true;
+  youtubeApiLoading = false;
+  const item = currentItem();
+  if (item?.videoId) renderYouTubePlayer(item, true);
+};
+
+function renderYouTubePlayer(item, force = false) {
+  const key = playbackKey(item);
+  if (!force && youtubePlayer && renderedVideoKey === key) return;
+  destroyYouTubePlayer();
+  renderedVideoKey = key;
+  els.videoFrame.innerHTML = '<div id="youtubePlayerHost" style="width:100%;height:100%;"></div>';
+  if (!youtubeApiReady || !window.YT?.Player) {
+    loadYouTubeApi();
+    return;
+  }
+  const start = resumeSecondsFor(item);
+  youtubePlayer = new YT.Player('youtubePlayerHost', {
+    videoId: item.videoId,
+    playerVars: {
+      playsinline: 1,
+      rel: 0,
+      start,
+    },
+    events: {
+      onReady: (event) => {
+        if (start > 0) event.target.seekTo(start, true);
+      },
+      onStateChange: handlePlayerStateChange,
+    },
+  });
+}
+
+function destroyYouTubePlayer() {
+  stopPlaybackTimer();
+  saveCurrentPlaybackPosition();
+  if (!youtubePlayer) return;
+  try {
+    youtubePlayer.destroy();
+  } catch {
+    // Ignore teardown failures from partially initialized embeds.
+  }
+  youtubePlayer = null;
+}
+
+function handlePlayerStateChange(event) {
+  const item = currentItem();
+  if (!item) return;
+  if (event.data === YT.PlayerState.PLAYING) {
+    if (item.watchState === 'new') {
+      item.watchState = 'watching';
+      patchCurrent({ watchState: 'watching' }).catch((err) => console.error('[playback] watch-state save failed', err));
+    }
+    startPlaybackTimer();
+    renderQueue();
+    renderPreview();
+    if (window.lucide) lucide.createIcons();
+  }
+  if (event.data === YT.PlayerState.PAUSED) {
+    saveCurrentPlaybackPosition();
+    stopPlaybackTimer();
+    renderPlaybackState();
+  }
+  if (event.data === YT.PlayerState.ENDED) {
+    item.watchState = 'watched';
+    savePlaybackPosition(item, playbackPayload(item, 0, safePlayerDuration(), true));
+    stopPlaybackTimer();
+    patchCurrent({ watchState: 'watched', playbackPosition: item.playbackPosition }).catch((err) => console.error('[playback] completion save failed', err));
+    render();
+  }
+}
+
+function startPlaybackTimer() {
+  if (playbackTimer) return;
+  playbackTimer = window.setInterval(() => {
+    saveCurrentPlaybackPosition();
+    renderPlaybackState();
+  }, playbackSaveMs);
+}
+
+function stopPlaybackTimer() {
+  if (!playbackTimer) return;
+  window.clearInterval(playbackTimer);
+  playbackTimer = null;
+}
+
+function safePlayerDuration() {
+  try {
+    return youtubePlayer?.getDuration() || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function savePlaybackPosition(item, position) {
+  if (!item || !position) return Promise.resolve();
+  item.playbackPosition = position;
+  playbackSaveInFlight = playbackSaveInFlight
+    .catch(() => {})
+    .then(() => api(`/api/queue/${item.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ playbackPosition: position }),
+    }).catch((err) => {
+      console.error('[playback] save failed', err);
+    }));
+  return playbackSaveInFlight;
+}
+
+function saveCurrentPlaybackPosition() {
+  const item = currentItem();
+  if (!item || !youtubePlayer || playbackKey(item) !== renderedVideoKey) return Promise.resolve();
+  if (item.watchState === 'watched' && item.playbackPosition?.completed) return Promise.resolve();
+  try {
+    const seconds = youtubePlayer.getCurrentTime();
+    const duration = youtubePlayer.getDuration();
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return savePlaybackPosition(item, playbackPayload(item, seconds, duration, false));
+    }
+  } catch {
+    // The YouTube player can throw before it has fully initialized.
+  }
+  return Promise.resolve();
+}
+
+function renderPlaybackState() {
+  const item = currentItem();
+  if (!item) return;
+  els.resumeStatePill.textContent = playbackLabel(item);
+  renderQueue();
+  renderPreview();
+  if (window.lucide) lucide.createIcons();
 }
 
 function renderProcessing(item) {
@@ -304,6 +520,7 @@ function renderProcessing(item) {
   els.processingSummary.innerHTML = `
     <div>Watch state: <strong>${escapeHtml(item.watchState)}</strong></div>
     <div>Processing state: <strong>${escapeHtml(formatState(item.processingState))}</strong></div>
+    <div>Saved playback: <strong>${escapeHtml(playbackLabel(item).replace('resume: ', ''))}</strong></div>
     <div>Review outcome: <strong>${escapeHtml(item.reviewOutcome || 'not set')}</strong></div>
     <div>Artifacts: <strong>${artifacts}</strong></div>`;
   els.processingHistory.innerHTML = history.map((entry) => `
@@ -364,6 +581,7 @@ function buildInvocation() {
     `- channel: ${item.channel || ''}`,
     `- watchState: ${item.watchState}`,
     `- processingState: ${item.processingState}`,
+    `- playbackPosition: ${playbackLabel(item).replace('resume: ', '')}`,
     item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
     '',
     'Extra user direction:',
@@ -522,6 +740,7 @@ async function flushWatchNotes() {
 async function removeCurrent() {
   const item = currentItem();
   if (!item) return;
+  await saveCurrentPlaybackPosition();
   const confirmed = window.confirm(`Remove "${item.title}" from the queue?\n\nRun logs are preserved, but this queue item will be removed.`);
   if (!confirmed) return;
   await api(`/api/queue/${item.id}`, { method: 'DELETE' });
@@ -534,6 +753,7 @@ async function runSkill() {
   const item = currentItem();
   const action = selectedAction();
   if (!item || !action) return;
+  await saveCurrentPlaybackPosition();
   await flushWatchNotes();
   await api('/api/jobs', {
     method: 'POST',
@@ -551,8 +771,19 @@ els.videoUrl.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') addVideo().catch((err) => alert(err.message));
 });
 els.mockPlaylist.addEventListener('click', () => importPlaylist().catch((err) => alert(err.message)));
-document.getElementById('markWatched').addEventListener('click', () => patchCurrent({ watchState: 'watched' }));
-document.getElementById('skipItem').addEventListener('click', () => patchCurrent({ watchState: 'skipped' }));
+document.getElementById('markWatched').addEventListener('click', () => {
+  const item = currentItem();
+  if (!item) return;
+  stopPlaybackTimer();
+  const playbackPosition = playbackPayload(item, 0, safePlayerDuration(), true);
+  item.watchState = 'watched';
+  item.playbackPosition = playbackPosition;
+  patchCurrent({ watchState: 'watched', playbackPosition });
+});
+document.getElementById('skipItem').addEventListener('click', () => {
+  saveCurrentPlaybackPosition();
+  patchCurrent({ watchState: 'skipped' });
+});
 els.removeItem.addEventListener('click', () => removeCurrent().catch((err) => alert(err.message)));
 els.watchNotes.addEventListener('input', () => {
   const item = currentItem();
@@ -564,6 +795,12 @@ els.watchNotes.addEventListener('blur', () => flushWatchNotes());
 els.extraPrompt.addEventListener('input', renderPreview);
 els.runSkill.addEventListener('click', () => runSkill().catch((err) => alert(err.message)));
 document.getElementById('copyPreview').addEventListener('click', () => navigator.clipboard?.writeText(buildInvocation()));
+window.addEventListener('beforeunload', () => {
+  saveCurrentPlaybackPosition();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveCurrentPlaybackPosition();
+});
 
 await refresh();
 setInterval(refresh, 2500);
