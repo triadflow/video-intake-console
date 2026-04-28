@@ -181,6 +181,13 @@ function playbackLabel(item) {
   return seconds > 0 ? `resume: ${formatDuration(seconds)}` : 'resume: start';
 }
 
+function queueSourceLabel(item) {
+  const channel = String(item?.channel || '').trim();
+  const source = String(item?.source || 'Manual').trim();
+  if (channel && source && !source.includes(channel)) return `${channel} · ${source}`;
+  return channel || source || 'Manual';
+}
+
 function shouldFetchDescription(item) {
   if (!item?.id || !item.videoId) return false;
   if (String(item.description || '').trim()) return false;
@@ -292,6 +299,8 @@ function renderQueue() {
   els.queueList.innerHTML = visible.map((item) => {
     const active = item.id === state.currentId ? ' active' : '';
     const thumb = item.thumbnail || (item.videoId ? `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg` : '');
+    const durationBadge = item.duration ? `<span class="duration-badge">${escapeHtml(formatDuration(item.duration))}</span>` : '';
+    const sourceLabel = queueSourceLabel(item);
     const resume = resumeSecondsFor(item);
     const resumePill = item.playbackPosition
       ? `<span class="pill">${resume > 0 ? `resume ${formatDuration(resume)}` : (item.playbackPosition.completed ? 'resume watched' : 'resume start')}</span>`
@@ -299,11 +308,14 @@ function renderQueue() {
     return `
       <div class="queue-card${active}">
         <button class="queue-item" data-id="${item.id}" type="button">
-          <span class="thumb">${thumb ? `<img src="${escapeHtml(thumb)}" alt="">` : '<i data-lucide="video"></i>'}</span>
+          <span class="thumb-wrap">
+            <span class="thumb">${thumb ? `<img src="${escapeHtml(thumb)}" alt="">` : '<i class="thumb-fallback" data-lucide="video"></i>'}</span>
+            ${durationBadge}
+          </span>
           <span class="item-text">
+            <span class="item-kicker">${escapeHtml(sourceLabel)}</span>
             <span class="item-title">${escapeHtml(item.title)}</span>
             <span class="item-meta">
-              <span>${escapeHtml(item.source || 'Manual')}</span>
               <span class="pill blue">${escapeHtml(item.watchState)}</span>
               <span class="pill ${pillClassForProcessing(item.processingState)}">${escapeHtml(formatState(item.processingState))}</span>
               ${resumePill}
