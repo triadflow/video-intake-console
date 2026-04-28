@@ -131,10 +131,17 @@ Queue items keep video metadata and local workflow state:
 - processing state
 - review outcome
 - watch notes
+- label IDs
 - timestamp ranges
 - timestamp focus flag
 - job history
 - artifacts
+
+Labels keep shared definitions:
+
+- name
+- color
+- created/updated timestamps
 
 Jobs keep:
 
@@ -166,6 +173,10 @@ Queue items can carry timestamp ranges shaped as `startSeconds`, optional `endSe
 ```
 
 The "Focus skill on timestamps" setting is explicit and per-video. When enabled, skill prompts instruct the downstream skill to prioritize the timestamp context before scanning the rest of the source. When disabled, timestamps are still passed as context but are not treated as a timestamp-only focus request.
+
+## Labels
+
+Labels are custom local definitions stored in `state.labels`. Queue items store label associations as `labelIds`, so a label can be renamed or recolored without editing every video. The review UI supports creating, editing, deleting, applying, and filtering by labels, and skill prompts include the current label names as part of the video context.
 
 ## Persistence And Local-Service Assumptions
 

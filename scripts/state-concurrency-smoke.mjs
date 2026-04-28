@@ -60,6 +60,7 @@ await writeFile(statePath, `${JSON.stringify({
     processingState: 'unprocessed',
     reviewOutcome: '',
     notes: '',
+    labelIds: [],
     timestampRanges: [],
     timestampFocus: false,
     playbackPosition: { seconds: 0, duration: 213, completed: false, updatedAt: null },
@@ -69,6 +70,7 @@ await writeFile(statePath, `${JSON.stringify({
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }],
+  labels: [],
   jobs: [],
   removedVideos: [],
   playlistSubscriptions: [],
@@ -88,27 +90,47 @@ const child = spawn(process.execPath, ['server.mjs'], {
 
 try {
   await waitForServer(child);
+  const createdLabel = await request('/api/labels', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Research', color: '#1d6fd8' }),
+  });
+  const labelId = createdLabel.label.id;
   await Promise.all([
     request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ notes: 'concurrent notes' }) }),
     request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ reviewOutcome: 'keep' }) }),
     request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ watchState: 'watching' }) }),
     request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ description: 'description survived overlap' }) }),
+    request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ labelIds: [labelId] }) }),
     request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ playbackPosition: { seconds: 42, duration: 213, completed: false, updatedAt: new Date().toISOString() } }) }),
     request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ timestampFocus: true, timestampRanges: [{ startSeconds: 30, endSeconds: 60, label: 'overlap range', source: 'manual' }] }) }),
   ]);
+  await request(`/api/labels/${labelId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: 'Research review', color: '#178558' }),
+  });
 
   const finalState = JSON.parse(await readFile(statePath, 'utf8'));
   const item = finalState.queue.find((entry) => entry.id === itemId);
+  const label = finalState.labels.find((entry) => entry.id === labelId);
   const failures = [];
   if (!item) failures.push('queue item missing');
+  if (!label) failures.push('label missing');
+  if (label?.name !== 'Research review') failures.push('label update lost');
+  if (label?.color !== '#178558') failures.push('label color update lost');
   if (item?.notes !== 'concurrent notes') failures.push('notes patch lost');
   if (item?.reviewOutcome !== 'keep') failures.push('review outcome patch lost');
   if (item?.watchState !== 'watching') failures.push('watch state patch lost');
   if (item?.description !== 'description survived overlap') failures.push('description patch lost');
+  if (!item?.labelIds?.includes(labelId)) failures.push('label assignment patch lost');
   if (item?.playbackPosition?.seconds !== 42) failures.push('playback patch lost');
   if (item?.timestampFocus !== true) failures.push('timestamp focus patch lost');
   if (item?.timestampRanges?.[0]?.startSeconds !== 30) failures.push('timestamp range patch lost');
   if (failures.length) throw new Error(failures.join('; '));
+  await request(`/api/labels/${labelId}`, { method: 'DELETE' });
+  const deletedState = JSON.parse(await readFile(statePath, 'utf8'));
+  const deletedItem = deletedState.queue.find((entry) => entry.id === itemId);
+  if (deletedState.labels.some((entry) => entry.id === labelId)) throw new Error('label delete lost');
+  if (deletedItem?.labelIds?.includes(labelId)) throw new Error('deleted label still assigned to queue item');
   console.log('state concurrency smoke passed');
 } finally {
   child.kill('SIGTERM');

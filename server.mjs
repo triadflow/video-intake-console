@@ -115,6 +115,10 @@ async function loadState() {
   state.jobs ||= [];
   state.removedVideos ||= [];
   state.playlistSubscriptions ||= [];
+  state.labels ||= [];
+  for (const item of state.queue) {
+    item.labelIds ||= [];
+  }
   return state;
 }
 
@@ -255,7 +259,49 @@ function extractTimestampRanges(text, source = 'description') {
 }
 
 function mergeTimestampRanges(...groups) {
-  return normalizeTimestampRanges(groups.flat());
+  return normalizeTimestampRanges(groups.flat().filter(Boolean));
+}
+
+const DEFAULT_LABEL_COLOR = '#1d6fd8';
+
+function normalizeLabelName(name) {
+  return String(name || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeLabelColor(color) {
+  const value = String(color || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : DEFAULT_LABEL_COLOR;
+}
+
+function labelNameKey(name) {
+  return normalizeLabelName(name).toLowerCase();
+}
+
+function findLabelByName(name, ignoreId = '') {
+  const key = labelNameKey(name);
+  return state.labels.find((label) => labelNameKey(label.name) === key && label.id !== ignoreId);
+}
+
+function normalizeLabelIds(labelIds) {
+  const valid = new Set(state.labels.map((label) => label.id));
+  const seen = new Set();
+  return (Array.isArray(labelIds) ? labelIds : [])
+    .map((id) => String(id || '').trim())
+    .filter((id) => {
+      if (!id || !valid.has(id) || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+}
+
+function labelsForItem(item) {
+  const byId = new Map(state.labels.map((label) => [label.id, label]));
+  return (item.labelIds || []).map((id) => byId.get(id)).filter(Boolean);
+}
+
+function formatLabels(item) {
+  const names = labelsForItem(item).map((label) => label.name);
+  return names.length ? names.join(', ') : 'none';
 }
 
 function parseYoutube(input) {
@@ -392,6 +438,7 @@ function itemFromVideo({ parsed, metadata, source }) {
     processingState: 'unprocessed',
     reviewOutcome: '',
     notes: '',
+    labelIds: [],
     timestampRanges: mergeTimestampRanges(parsed.timestampRanges, extractTimestampRanges(metadata.description, 'description')),
     timestampFocus: false,
     playbackPosition: {
@@ -562,6 +609,7 @@ function buildPrompt(action, item, extraPrompt) {
     item.description ? `- description: ${item.description}` : '- description: none saved',
     `- watchState: ${item.watchState}`,
     `- processingState: ${item.processingState}`,
+    `- labels: ${formatLabels(item)}`,
     `- playbackPosition: ${formatPlaybackPosition(item.playbackPosition)}`,
     `- timestampFocus: ${item.timestampFocus ? 'yes' : 'no'}`,
     item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
@@ -1028,10 +1076,65 @@ async function handleApi(req, res, pathname) {
     await refreshClaudeSessionsForJobs(state.jobs.slice(0, 10));
     sendJson(res, 200, {
       queue: state.queue,
+      labels: state.labels,
       jobs: state.jobs,
       playlistSubscriptions: state.playlistSubscriptions,
       removedVideos: state.removedVideos,
     });
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/labels') {
+    const body = await readJson(req);
+    const label = await withStateMutation('create label', async () => {
+      const name = normalizeLabelName(body.name);
+      if (!name) throw new Error('Label name is required');
+      if (findLabelByName(name)) throw new Error(`Label already exists: ${name}`);
+      const next = {
+        id: makeId('label'),
+        name,
+        color: normalizeLabelColor(body.color),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+      state.labels.push(next);
+      return next;
+    });
+    sendJson(res, 201, { label });
+    return;
+  }
+  const labelMatch = pathname.match(/^\/api\/labels\/([^/]+)$/);
+  if (req.method === 'PATCH' && labelMatch) {
+    const body = await readJson(req);
+    const label = await withStateMutation('patch label', async () => {
+      const current = state.labels.find((entry) => entry.id === labelMatch[1]);
+      if (!current) throw new Error('Label not found');
+      if (Object.hasOwn(body, 'name')) {
+        const name = normalizeLabelName(body.name);
+        if (!name) throw new Error('Label name is required');
+        if (findLabelByName(name, current.id)) throw new Error(`Label already exists: ${name}`);
+        current.name = name;
+      }
+      if (Object.hasOwn(body, 'color')) current.color = normalizeLabelColor(body.color);
+      current.updatedAt = nowIso();
+      return current;
+    });
+    sendJson(res, 200, { label });
+    return;
+  }
+  if (req.method === 'DELETE' && labelMatch) {
+    const labelId = labelMatch[1];
+    const result = await withStateMutation('delete label', async () => {
+      const index = state.labels.findIndex((entry) => entry.id === labelId);
+      if (index < 0) throw new Error('Label not found');
+      const [removed] = state.labels.splice(index, 1);
+      for (const item of state.queue) {
+        if (!Array.isArray(item.labelIds) || !item.labelIds.includes(labelId)) continue;
+        item.labelIds = item.labelIds.filter((id) => id !== labelId);
+        item.updatedAt = nowIso();
+      }
+      return { removed };
+    });
+    sendJson(res, 200, result);
     return;
   }
   if (req.method === 'POST' && pathname === '/api/queue/video') {
@@ -1134,6 +1237,7 @@ async function handleApi(req, res, pathname) {
       for (const key of ['watchState', 'processingState', 'notes', 'reviewOutcome', 'playbackPosition', 'description', 'timestampFocus']) {
         if (Object.hasOwn(body, key)) current[key] = body[key];
       }
+      if (Object.hasOwn(body, 'labelIds')) current.labelIds = normalizeLabelIds(body.labelIds);
       if (Object.hasOwn(body, 'timestampRanges')) current.timestampRanges = normalizeTimestampRanges(body.timestampRanges);
       current.updatedAt = nowIso();
       return current;

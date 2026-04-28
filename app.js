@@ -14,6 +14,7 @@ const decisionStates = new Set(['unprocessed', 'transcribed', 'needs_review', 'f
 
 let state = {
   queue: [],
+  labels: [],
   jobs: [],
   playlists: [],
   removedVideos: [],
@@ -22,6 +23,7 @@ let state = {
   claudeAvailable: false,
   ytDlpAvailable: false,
   activeFilter: 'decision',
+  activeLabelId: '',
   currentId: '',
   selectedAction: 'transcribe',
 };
@@ -43,6 +45,11 @@ const els = {
   watchStatePill: document.getElementById('watchStatePill'),
   processingStatePill: document.getElementById('processingStatePill'),
   resumeStatePill: document.getElementById('resumeStatePill'),
+  labelCount: document.getElementById('labelCount'),
+  labelList: document.getElementById('labelList'),
+  labelName: document.getElementById('labelName'),
+  labelColor: document.getElementById('labelColor'),
+  addLabel: document.getElementById('addLabel'),
   videoDescription: document.getElementById('videoDescription'),
   timestampText: document.getElementById('timestampText'),
   timestampFocus: document.getElementById('timestampFocus'),
@@ -102,8 +109,12 @@ function matchesFilter(item, filterId) {
   return item.processingState === filterId;
 }
 
+function matchesLabelFilter(item) {
+  return !state.activeLabelId || (item.labelIds || []).includes(state.activeLabelId);
+}
+
 function filteredQueue() {
-  return state.queue.filter((item) => matchesFilter(item, state.activeFilter));
+  return state.queue.filter((item) => matchesFilter(item, state.activeFilter) && matchesLabelFilter(item));
 }
 
 function escapeHtml(value) {
@@ -129,6 +140,43 @@ function formatState(value) {
 
 function formatTimestamp(value) {
   return value ? new Date(value).toISOString() : '';
+}
+
+function safeLabelColor(color) {
+  const value = String(color || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : '#66717f';
+}
+
+function labelPillStyle(label) {
+  const color = safeLabelColor(label.color);
+  return `style="color:${color};border-color:${color}66;background:${color}14"`;
+}
+
+function labelDotStyle(label) {
+  return `style="background:${safeLabelColor(label.color)}"`;
+}
+
+function labelById(labelId) {
+  return state.labels.find((label) => label.id === labelId) || null;
+}
+
+function labelsForItem(item) {
+  return (item?.labelIds || []).map(labelById).filter(Boolean);
+}
+
+function labelsText(item) {
+  const labels = labelsForItem(item).map((label) => label.name);
+  return labels.length ? labels.join(', ') : 'none';
+}
+
+function renderLabelPills(item, { max = 3 } = {}) {
+  const labels = labelsForItem(item);
+  if (!labels.length) return '';
+  const shown = labels.slice(0, max).map((label) => (
+    `<span class="label-pill" ${labelPillStyle(label)}>${escapeHtml(label.name)}</span>`
+  ));
+  if (labels.length > max) shown.push(`<span class="pill">+${labels.length - max}</span>`);
+  return shown.join('');
 }
 
 function playbackKey(item) {
@@ -275,6 +323,48 @@ function renderDescription(item, status = '') {
   els.videoDescription.className = 'description-text empty-copy';
 }
 
+function renderLabels(item) {
+  const assigned = new Set(item?.labelIds || []);
+  els.labelCount.textContent = `${state.labels.length} ${state.labels.length === 1 ? 'label' : 'labels'}`;
+  if (!item) {
+    els.labelList.innerHTML = '<div class="empty-copy">Select a video to apply labels.</div>';
+    return;
+  }
+  els.labelList.innerHTML = state.labels.map((label) => `
+    <div class="label-row" data-label-id="${escapeHtml(label.id)}">
+      <input class="label-apply" type="checkbox" aria-label="Apply ${escapeHtml(label.name)}" ${assigned.has(label.id) ? 'checked' : ''}>
+      <input class="label-color-input" type="color" value="${escapeHtml(safeLabelColor(label.color))}" aria-label="Label color">
+      <input class="label-name-input" type="text" value="${escapeHtml(label.name)}" aria-label="Label name">
+      <button class="icon-btn label-save" type="button" title="Save label" aria-label="Save label">
+        <i data-lucide="save"></i>
+      </button>
+      <button class="icon-btn label-delete" type="button" title="Delete label" aria-label="Delete label">
+        <i data-lucide="trash-2"></i>
+      </button>
+    </div>
+  `).join('') || '<div class="empty-copy">Create a label to start.</div>';
+  document.querySelectorAll('.label-apply').forEach((input) => {
+    input.addEventListener('change', () => {
+      const row = input.closest('.label-row');
+      setCurrentLabel(row.dataset.labelId, input.checked).catch((err) => alert(err.message));
+    });
+  });
+  document.querySelectorAll('.label-save').forEach((button) => {
+    button.addEventListener('click', () => {
+      const row = button.closest('.label-row');
+      const name = row.querySelector('.label-name-input').value;
+      const color = row.querySelector('.label-color-input').value;
+      updateLabel(row.dataset.labelId, { name, color }).catch((err) => alert(err.message));
+    });
+  });
+  document.querySelectorAll('.label-delete').forEach((button) => {
+    button.addEventListener('click', () => {
+      const row = button.closest('.label-row');
+      deleteLabel(row.dataset.labelId).catch((err) => alert(err.message));
+    });
+  });
+}
+
 function relatedJobs(itemId) {
   return state.jobs.filter((job) => job.itemId === itemId);
 }
@@ -295,6 +385,7 @@ function buildQueueItemContext(item) {
     `- watchState: ${item.watchState || ''}`,
     `- processingState: ${item.processingState || ''}`,
     `- reviewOutcome: ${item.reviewOutcome || ''}`,
+    `- labels: ${labelsText(item)}`,
     `- playbackPosition: ${playbackLabel(item).replace('resume: ', '')}`,
     `- timestampFocus: ${item.timestampFocus ? 'yes' : 'no'}`,
     item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
@@ -348,15 +439,34 @@ async function copyText(text) {
 }
 
 function renderFilters() {
-  els.filterRow.innerHTML = filters.map((filter) => {
-    const count = state.queue.filter((item) => matchesFilter(item, filter.id)).length;
+  const baseFilters = filters.map((filter) => {
+    const count = state.queue.filter((item) => matchesFilter(item, filter.id) && matchesLabelFilter(item)).length;
     const active = filter.id === state.activeFilter ? ' active' : '';
     return `<button class="filter-chip${active}" data-filter="${filter.id}">${escapeHtml(filter.label)} <span>${count}</span></button>`;
   }).join('');
-  document.querySelectorAll('.filter-chip').forEach((button) => {
+  const labelFilters = state.labels.map((label) => {
+    const count = state.queue.filter((item) => matchesFilter(item, state.activeFilter) && (item.labelIds || []).includes(label.id)).length;
+    const active = label.id === state.activeLabelId ? ' active' : '';
+    return `<button class="filter-chip label-filter${active}" data-label-filter="${escapeHtml(label.id)}">
+      <span class="label-dot" ${labelDotStyle(label)}></span>${escapeHtml(label.name)} <span>${count}</span>
+    </button>`;
+  }).join('');
+  els.filterRow.innerHTML = `${baseFilters}${labelFilters}`;
+  document.querySelectorAll('[data-filter]').forEach((button) => {
     button.addEventListener('click', () => {
       saveCurrentPlaybackPosition();
       state.activeFilter = button.dataset.filter;
+      const visible = filteredQueue();
+      if (visible.length && !visible.some((item) => item.id === state.currentId)) {
+        state.currentId = visible[0].id;
+      }
+      render();
+    });
+  });
+  document.querySelectorAll('[data-label-filter]').forEach((button) => {
+    button.addEventListener('click', () => {
+      saveCurrentPlaybackPosition();
+      state.activeLabelId = state.activeLabelId === button.dataset.labelFilter ? '' : button.dataset.labelFilter;
       const visible = filteredQueue();
       if (visible.length && !visible.some((item) => item.id === state.currentId)) {
         state.currentId = visible[0].id;
@@ -392,6 +502,7 @@ function renderQueue() {
               <span class="pill blue">${escapeHtml(item.watchState)}</span>
               <span class="pill ${pillClassForProcessing(item.processingState)}">${escapeHtml(formatState(item.processingState))}</span>
               ${resumePill}
+              ${renderLabelPills(item)}
             </span>
           </span>
         </button>
@@ -456,6 +567,7 @@ function renderCurrent() {
     els.timestampText.value = '';
     els.timestampFocus.checked = false;
     els.timestampCount.textContent = '0 ranges';
+    renderLabels(null);
     renderDescription(null);
     destroyYouTubePlayer();
     renderedVideoKey = '';
@@ -468,6 +580,7 @@ function renderCurrent() {
   els.processingStatePill.textContent = `processing: ${formatState(item.processingState)}`;
   els.processingStatePill.className = `pill ${pillClassForProcessing(item.processingState)}`;
   els.resumeStatePill.textContent = playbackLabel(item);
+  renderLabels(item);
   renderDescription(item, shouldFetchDescription(item) ? 'Fetching description...' : '');
   if (document.activeElement !== els.timestampText) {
     els.timestampText.value = timestampRangesToText(item.timestampRanges);
@@ -721,6 +834,7 @@ function buildInvocation() {
     item.description ? `- description: ${item.description}` : '- description: none saved',
     `- watchState: ${item.watchState}`,
     `- processingState: ${item.processingState}`,
+    `- labels: ${labelsText(item)}`,
     `- playbackPosition: ${playbackLabel(item).replace('resume: ', '')}`,
     `- timestampFocus: ${item.timestampFocus ? 'yes' : 'no'}`,
     item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
@@ -794,10 +908,14 @@ async function refresh() {
     ...state,
     ...health,
     queue: queue.queue,
+    labels: queue.labels || [],
     jobs: queue.jobs,
     playlists: queue.playlistSubscriptions || [],
     removedVideos: queue.removedVideos || [],
   };
+  if (state.activeLabelId && !state.labels.some((label) => label.id === state.activeLabelId)) {
+    state.activeLabelId = '';
+  }
   if (!state.currentId || !state.queue.some((item) => item.id === state.currentId)) {
     state.currentId = state.queue.find((item) => decisionStates.has(item.processingState))?.id || state.queue[0]?.id || '';
   }
@@ -852,6 +970,45 @@ async function patchCurrent(patch) {
     body: JSON.stringify(patch),
   });
   await refresh();
+}
+
+async function createLabel() {
+  const name = els.labelName.value.trim();
+  if (!name) return;
+  await api('/api/labels', {
+    method: 'POST',
+    body: JSON.stringify({ name, color: els.labelColor.value }),
+  });
+  els.labelName.value = '';
+  await refresh();
+}
+
+async function updateLabel(labelId, patch) {
+  await api(`/api/labels/${encodeURIComponent(labelId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+  await refresh();
+}
+
+async function deleteLabel(labelId) {
+  const label = labelById(labelId);
+  if (!label) return;
+  const confirmed = window.confirm(`Delete label "${label.name}"?\n\nIt will be removed from every video.`);
+  if (!confirmed) return;
+  await api(`/api/labels/${encodeURIComponent(labelId)}`, { method: 'DELETE' });
+  if (state.activeLabelId === labelId) state.activeLabelId = '';
+  await refresh();
+}
+
+async function setCurrentLabel(labelId, enabled) {
+  const item = currentItem();
+  if (!item) return;
+  const next = new Set(item.labelIds || []);
+  if (enabled) next.add(labelId);
+  else next.delete(labelId);
+  item.labelIds = [...next];
+  await patchCurrent({ labelIds: item.labelIds });
 }
 
 function saveWatchNotes(itemId, notes) {
@@ -950,6 +1107,10 @@ els.videoUrl.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') addVideo().catch((err) => alert(err.message));
 });
 els.mockPlaylist.addEventListener('click', () => importPlaylist().catch((err) => alert(err.message)));
+els.addLabel.addEventListener('click', () => createLabel().catch((err) => alert(err.message)));
+els.labelName.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') createLabel().catch((err) => alert(err.message));
+});
 document.getElementById('markWatched').addEventListener('click', () => {
   const item = currentItem();
   if (!item) return;
