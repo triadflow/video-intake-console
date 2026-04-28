@@ -518,6 +518,7 @@
 
     .current-card,
     .description-card,
+    .timestamp-card,
     .notes-card,
     .processing-card,
     .job-card,
@@ -563,6 +564,36 @@
     .description-text.empty-copy {
       color: var(--muted);
       font-style: italic;
+    }
+
+    .timestamp-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .inline-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      text-transform: none;
+    }
+
+    .inline-toggle input {
+      width: 16px;
+      height: 16px;
+      min-height: 16px;
+      flex: 0 0 auto;
+    }
+
+    .timestamp-textarea {
+      min-height: 92px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.4;
     }
 
     .button-row {
@@ -887,6 +918,20 @@
             <div class="field-group">
               <label for="videoDescription">Description</label>
               <div class="description-text empty-copy" id="videoDescription">No description saved.</div>
+            </div>
+          </div>
+
+          <div class="timestamp-card">
+            <div class="field-group">
+              <label for="timestampText">Timestamp context</label>
+              <div class="timestamp-tools">
+                <label class="inline-toggle" for="timestampFocus">
+                  <input id="timestampFocus" type="checkbox">
+                  Focus skill on timestamps
+                </label>
+                <span class="counter" id="timestampCount">0 ranges</span>
+              </div>
+              <textarea class="timestamp-textarea" id="timestampText" placeholder="00:42 - relevant claim&#10;03:10-04:05 - section to inspect"></textarea>
             </div>
           </div>
 

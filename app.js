@@ -28,6 +28,8 @@ let state = {
 
 let notesSaveTimer = null;
 let notesSaveInFlight = Promise.resolve();
+let timestampSaveTimer = null;
+let timestampSaveInFlight = Promise.resolve();
 
 const els = {
   topStatus: document.querySelector('.top-status span:last-child'),
@@ -42,6 +44,9 @@ const els = {
   processingStatePill: document.getElementById('processingStatePill'),
   resumeStatePill: document.getElementById('resumeStatePill'),
   videoDescription: document.getElementById('videoDescription'),
+  timestampText: document.getElementById('timestampText'),
+  timestampFocus: document.getElementById('timestampFocus'),
+  timestampCount: document.getElementById('timestampCount'),
   watchNotes: document.getElementById('watchNotes'),
   processingCount: document.getElementById('processingCount'),
   processingSummary: document.getElementById('processingSummary'),
@@ -173,6 +178,70 @@ function formatDuration(seconds) {
   return `${minutes}:${String(secs).padStart(2, '0')}`;
 }
 
+function parseTimestampValue(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  const hms = raw.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/);
+  if (hms && (hms[1] || hms[2] || hms[3])) {
+    return (Number(hms[1] || 0) * 3600) + (Number(hms[2] || 0) * 60) + Number(hms[3] || 0);
+  }
+  if (/^\d{1,2}(?::\d{2}){1,2}$/.test(raw)) {
+    const parts = raw.split(':').map(Number);
+    if (parts.length === 2) return (parts[0] * 60) + parts[1];
+    return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+  }
+  return null;
+}
+
+function normalizeTimestampRanges(ranges) {
+  return (Array.isArray(ranges) ? ranges : [])
+    .map((range) => ({
+      id: range.id || `ts-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      startSeconds: Number(range.startSeconds),
+      endSeconds: range.endSeconds === null || range.endSeconds === undefined || range.endSeconds === '' ? null : Number(range.endSeconds),
+      label: String(range.label || '').trim(),
+      source: String(range.source || 'manual').trim() || 'manual',
+    }))
+    .filter((range) => Number.isFinite(range.startSeconds) && range.startSeconds >= 0)
+    .filter((range) => range.endSeconds === null || (Number.isFinite(range.endSeconds) && range.endSeconds >= range.startSeconds))
+    .slice(0, 80);
+}
+
+function timestampRangesToText(ranges) {
+  return normalizeTimestampRanges(ranges).map((range) => {
+    const time = range.endSeconds === null
+      ? formatDuration(range.startSeconds)
+      : `${formatDuration(range.startSeconds)}-${formatDuration(range.endSeconds)}`;
+    return `${time}${range.label ? ` - ${range.label}` : ''}`;
+  }).join('\n');
+}
+
+function parseTimestampText(value) {
+  const ranges = [];
+  for (const line of String(value || '').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const match = trimmed.match(/^(\d{1,2}(?::\d{2}){1,2}|\d+h\d*m?\d*s?|\d+m\d*s?|\d+s?|\d+)(?:\s*[-–—]\s*(\d{1,2}(?::\d{2}){1,2}|\d+h\d*m?\d*s?|\d+m\d*s?|\d+s?|\d+))?(?:\s*[-–—:|]\s*(.*))?$/i);
+    if (!match) continue;
+    const start = parseTimestampValue(match[1]);
+    const end = match[2] ? parseTimestampValue(match[2]) : null;
+    if (start === null) continue;
+    ranges.push({
+      startSeconds: start,
+      endSeconds: end !== null && end > start ? end : null,
+      label: String(match[3] || '').trim(),
+      source: 'manual',
+    });
+  }
+  return normalizeTimestampRanges(ranges);
+}
+
+function timestampSummary(item) {
+  const count = normalizeTimestampRanges(item?.timestampRanges).length;
+  return `${count} ${count === 1 ? 'range' : 'ranges'}`;
+}
+
 function playbackLabel(item) {
   const position = playbackPosition(item);
   if (!position) return 'resume: start';
@@ -227,6 +296,7 @@ function buildQueueItemContext(item) {
     `- processingState: ${item.processingState || ''}`,
     `- reviewOutcome: ${item.reviewOutcome || ''}`,
     `- playbackPosition: ${playbackLabel(item).replace('resume: ', '')}`,
+    `- timestampFocus: ${item.timestampFocus ? 'yes' : 'no'}`,
     item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
     `- queueItemId: ${item.id}`,
     `- createdAt: ${formatTimestamp(item.createdAt)}`,
@@ -254,6 +324,9 @@ function buildQueueItemContext(item) {
     '',
     'Recent history:',
     ...(recentHistory.length ? recentHistory.map((entry) => `- ${formatTimestamp(entry.time)} ${entry.title || ''}: ${entry.status || ''}${entry.detail ? ` - ${entry.detail}` : ''}`) : ['- none']),
+    '',
+    'Timestamp context:',
+    ...(normalizeTimestampRanges(item.timestampRanges).length ? timestampRangesToText(item.timestampRanges).split('\n').map((line) => `- ${line}`) : ['- none']),
   ];
   return lines.filter((line) => line !== '').join('\n');
 }
@@ -380,6 +453,9 @@ function renderCurrent() {
     els.currentTitle.textContent = 'Add a video to begin';
     els.currentUrl.textContent = '';
     els.watchNotes.value = '';
+    els.timestampText.value = '';
+    els.timestampFocus.checked = false;
+    els.timestampCount.textContent = '0 ranges';
     renderDescription(null);
     destroyYouTubePlayer();
     renderedVideoKey = '';
@@ -393,6 +469,11 @@ function renderCurrent() {
   els.processingStatePill.className = `pill ${pillClassForProcessing(item.processingState)}`;
   els.resumeStatePill.textContent = playbackLabel(item);
   renderDescription(item, shouldFetchDescription(item) ? 'Fetching description...' : '');
+  if (document.activeElement !== els.timestampText) {
+    els.timestampText.value = timestampRangesToText(item.timestampRanges);
+  }
+  els.timestampFocus.checked = Boolean(item.timestampFocus);
+  els.timestampCount.textContent = timestampSummary(item);
   if (document.activeElement !== els.watchNotes) {
     els.watchNotes.value = item.notes || '';
   }
@@ -415,6 +496,10 @@ function ensureDescription(item) {
       if (index >= 0) state.queue[index] = result.item;
       if (state.currentId === item.id) {
         renderDescription(result.item);
+        if (document.activeElement !== els.timestampText) {
+          els.timestampText.value = timestampRangesToText(result.item.timestampRanges);
+        }
+        els.timestampCount.textContent = timestampSummary(result.item);
         renderPreview();
       }
     })
@@ -637,7 +722,14 @@ function buildInvocation() {
     `- watchState: ${item.watchState}`,
     `- processingState: ${item.processingState}`,
     `- playbackPosition: ${playbackLabel(item).replace('resume: ', '')}`,
+    `- timestampFocus: ${item.timestampFocus ? 'yes' : 'no'}`,
     item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
+    '',
+    'Timestamp context:',
+    ...(normalizeTimestampRanges(item.timestampRanges).length ? timestampRangesToText(item.timestampRanges).split('\n').map((line) => `- ${line}`) : ['- none']),
+    item.timestampFocus && normalizeTimestampRanges(item.timestampRanges).length
+      ? 'Instruction: prioritize analysis around the timestamp context above before scanning the rest of the source.'
+      : 'Instruction: use timestamp context when relevant; no timestamp-only focus requested.',
     '',
     'Extra user direction:',
     els.extraPrompt.value.trim() || 'none',
@@ -792,10 +884,41 @@ async function flushWatchNotes() {
   return saveWatchNotes(item.id, els.watchNotes.value);
 }
 
+function saveTimestamps(itemId, timestampRanges, timestampFocus) {
+  timestampSaveInFlight = timestampSaveInFlight
+    .catch(() => {})
+    .then(() => api(`/api/queue/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ timestampRanges, timestampFocus }),
+    }).catch((err) => {
+      console.error('[timestamps] autosave failed', err);
+    }));
+  return timestampSaveInFlight;
+}
+
+function scheduleTimestampSave() {
+  const item = currentItem();
+  if (!item) return;
+  window.clearTimeout(timestampSaveTimer);
+  timestampSaveTimer = window.setTimeout(() => {
+    saveTimestamps(item.id, normalizeTimestampRanges(item.timestampRanges), Boolean(item.timestampFocus));
+  }, 700);
+}
+
+async function flushTimestamps() {
+  const item = currentItem();
+  window.clearTimeout(timestampSaveTimer);
+  timestampSaveTimer = null;
+  if (!item) return timestampSaveInFlight;
+  await timestampSaveInFlight;
+  return saveTimestamps(item.id, normalizeTimestampRanges(item.timestampRanges), Boolean(item.timestampFocus));
+}
+
 async function removeCurrent() {
   const item = currentItem();
   if (!item) return;
   await saveCurrentPlaybackPosition();
+  await flushTimestamps();
   const confirmed = window.confirm(`Remove "${item.title}" from the queue?\n\nRun logs are preserved, but this queue item will be removed.`);
   if (!confirmed) return;
   await api(`/api/queue/${item.id}`, { method: 'DELETE' });
@@ -810,6 +933,7 @@ async function runSkill() {
   if (!item || !action) return;
   await saveCurrentPlaybackPosition();
   await flushWatchNotes();
+  await flushTimestamps();
   await api('/api/jobs', {
     method: 'POST',
     body: JSON.stringify({
@@ -847,14 +971,34 @@ els.watchNotes.addEventListener('input', () => {
   scheduleWatchNotesSave();
 });
 els.watchNotes.addEventListener('blur', () => flushWatchNotes());
+els.timestampText.addEventListener('input', () => {
+  const item = currentItem();
+  if (!item) return;
+  item.timestampRanges = parseTimestampText(els.timestampText.value);
+  els.timestampCount.textContent = timestampSummary(item);
+  renderPreview();
+  scheduleTimestampSave();
+});
+els.timestampText.addEventListener('blur', () => flushTimestamps());
+els.timestampFocus.addEventListener('change', () => {
+  const item = currentItem();
+  if (!item) return;
+  item.timestampFocus = els.timestampFocus.checked;
+  renderPreview();
+  scheduleTimestampSave();
+});
 els.extraPrompt.addEventListener('input', renderPreview);
 els.runSkill.addEventListener('click', () => runSkill().catch((err) => alert(err.message)));
 document.getElementById('copyPreview').addEventListener('click', () => navigator.clipboard?.writeText(buildInvocation()));
 window.addEventListener('beforeunload', () => {
   saveCurrentPlaybackPosition();
+  flushTimestamps();
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') saveCurrentPlaybackPosition();
+  if (document.visibilityState === 'hidden') {
+    saveCurrentPlaybackPosition();
+    flushTimestamps();
+  }
 });
 
 await refresh();

@@ -15,6 +15,7 @@ It is built for workflows where Claude Code is already used locally across nearb
 - Track separate watch and processing states.
 - Filter by decision and processing status.
 - Autosave watch notes per video.
+- Capture timestamp ranges and choose whether a skill should focus on them.
 - Add extra directions for the selected skill run.
 - Select configured Claude Code skill actions from the GUI.
 - Run one background job at a time through a serial worker.
@@ -130,6 +131,8 @@ Queue items keep video metadata and local workflow state:
 - processing state
 - review outcome
 - watch notes
+- timestamp ranges
+- timestamp focus flag
 - job history
 - artifacts
 
@@ -152,6 +155,17 @@ Jobs keep:
 - **Serial background work.** One local processing job at a time avoids runaway processes.
 - **Inspectable runs.** Every job should leave logs and enough metadata to reconstruct what happened.
 - **Small UI, real workflow.** The GUI is meant to support watching and dispatching, not become another dashboard.
+
+## Timestamp Context
+
+Queue items can carry timestamp ranges shaped as `startSeconds`, optional `endSeconds`, label, and source. The server extracts initial ranges from YouTube URL start parameters and timestamp-like lines in descriptions when metadata is available. The review UI also exposes an editable timestamp box using one range per line:
+
+```text
+00:42 - relevant claim
+03:10-04:05 - section to inspect
+```
+
+The "Focus skill on timestamps" setting is explicit and per-video. When enabled, skill prompts instruct the downstream skill to prioritize the timestamp context before scanning the rest of the source. When disabled, timestamps are still passed as context but are not treated as a timestamp-only focus request.
 
 ## Persistence And Local-Service Assumptions
 

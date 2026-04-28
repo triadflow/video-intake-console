@@ -60,6 +60,8 @@ await writeFile(statePath, `${JSON.stringify({
     processingState: 'unprocessed',
     reviewOutcome: '',
     notes: '',
+    timestampRanges: [],
+    timestampFocus: false,
     playbackPosition: { seconds: 0, duration: 213, completed: false, updatedAt: null },
     artifacts: [],
     history: [],
@@ -92,6 +94,7 @@ try {
     request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ watchState: 'watching' }) }),
     request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ description: 'description survived overlap' }) }),
     request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ playbackPosition: { seconds: 42, duration: 213, completed: false, updatedAt: new Date().toISOString() } }) }),
+    request(`/api/queue/${itemId}`, { method: 'PATCH', body: JSON.stringify({ timestampFocus: true, timestampRanges: [{ startSeconds: 30, endSeconds: 60, label: 'overlap range', source: 'manual' }] }) }),
   ]);
 
   const finalState = JSON.parse(await readFile(statePath, 'utf8'));
@@ -103,6 +106,8 @@ try {
   if (item?.watchState !== 'watching') failures.push('watch state patch lost');
   if (item?.description !== 'description survived overlap') failures.push('description patch lost');
   if (item?.playbackPosition?.seconds !== 42) failures.push('playback patch lost');
+  if (item?.timestampFocus !== true) failures.push('timestamp focus patch lost');
+  if (item?.timestampRanges?.[0]?.startSeconds !== 30) failures.push('timestamp range patch lost');
   if (failures.length) throw new Error(failures.join('; '));
   console.log('state concurrency smoke passed');
 } finally {

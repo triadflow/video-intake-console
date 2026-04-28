@@ -175,6 +175,89 @@ async function readJson(req) {
   return raw ? JSON.parse(raw) : {};
 }
 
+function parseTimestampValue(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  const hms = raw.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/);
+  if (hms && (hms[1] || hms[2] || hms[3])) {
+    return (Number(hms[1] || 0) * 3600) + (Number(hms[2] || 0) * 60) + Number(hms[3] || 0);
+  }
+  if (/^\d{1,2}(?::\d{2}){1,2}$/.test(raw)) {
+    const parts = raw.split(':').map(Number);
+    if (parts.length === 2) return (parts[0] * 60) + parts[1];
+    return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+  }
+  return null;
+}
+
+function formatSeconds(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hours) return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function createTimestampRange({ startSeconds, endSeconds = null, label = '', source = 'manual' }) {
+  return {
+    id: makeId('ts'),
+    startSeconds,
+    endSeconds,
+    label,
+    source,
+  };
+}
+
+function normalizeTimestampRanges(ranges) {
+  const seen = new Set();
+  return (Array.isArray(ranges) ? ranges : [])
+    .map((range) => ({
+      id: range.id || makeId('ts'),
+      startSeconds: Number(range.startSeconds),
+      endSeconds: range.endSeconds === null || range.endSeconds === undefined || range.endSeconds === '' ? null : Number(range.endSeconds),
+      label: String(range.label || '').trim(),
+      source: String(range.source || 'manual').trim() || 'manual',
+    }))
+    .filter((range) => Number.isFinite(range.startSeconds) && range.startSeconds >= 0)
+    .filter((range) => range.endSeconds === null || (Number.isFinite(range.endSeconds) && range.endSeconds >= range.startSeconds))
+    .filter((range) => {
+      const key = `${range.startSeconds}:${range.endSeconds ?? ''}:${range.label}:${range.source}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 80);
+}
+
+function extractTimestampRanges(text, source = 'description') {
+  const ranges = [];
+  const lines = String(text || '').split(/\r?\n/);
+  const timePattern = /(\d{1,2}(?::\d{2}){1,2})/g;
+  for (const line of lines) {
+    const matches = [...line.matchAll(timePattern)];
+    if (!matches.length) continue;
+    const start = parseTimestampValue(matches[0][1]);
+    if (start === null) continue;
+    const end = matches[1] ? parseTimestampValue(matches[1][1]) : null;
+    const labelMatch = matches[matches.length > 1 ? 1 : 0];
+    const label = line.slice(labelMatch.index + labelMatch[1].length).replace(/^[\s\-–—:|]+/, '').trim();
+    ranges.push(createTimestampRange({
+      startSeconds: start,
+      endSeconds: end !== null && end > start ? end : null,
+      label,
+      source,
+    }));
+    if (ranges.length >= 60) break;
+  }
+  return normalizeTimestampRanges(ranges);
+}
+
+function mergeTimestampRanges(...groups) {
+  return normalizeTimestampRanges(groups.flat());
+}
+
 function parseYoutube(input) {
   let url;
   try {
@@ -195,12 +278,20 @@ function parseYoutube(input) {
   }
 
   const playlistId = url.searchParams.get('list') || '';
+  const start = parseTimestampValue(url.searchParams.get('t') || url.searchParams.get('start'));
+  const timestampRanges = start === null ? [] : [
+    createTimestampRange({
+      startSeconds: start,
+      label: 'URL start parameter',
+      source: 'url',
+    }),
+  ];
   const isPlaylist = Boolean(playlistId) && !videoId;
   const canonicalUrl = videoId
     ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
     : input;
 
-  return { input, canonicalUrl, videoId, playlistId, isPlaylist };
+  return { input, canonicalUrl, videoId, playlistId, timestampRanges, isPlaylist };
 }
 
 function runJsonCommand(command, args, timeoutMs = 45_000) {
@@ -301,6 +392,8 @@ function itemFromVideo({ parsed, metadata, source }) {
     processingState: 'unprocessed',
     reviewOutcome: '',
     notes: '',
+    timestampRanges: mergeTimestampRanges(parsed.timestampRanges, extractTimestampRanges(metadata.description, 'description')),
+    timestampFocus: false,
     playbackPosition: {
       seconds: 0,
       duration: metadata.duration ?? null,
@@ -328,6 +421,18 @@ function formatPlaybackPosition(position) {
   return duration ? `${formatted} / ${duration}s` : formatted;
 }
 
+function formatTimestampRanges(ranges) {
+  const normalized = normalizeTimestampRanges(ranges);
+  if (!normalized.length) return '- none';
+  return normalized.map((range) => {
+    const time = range.endSeconds === null
+      ? formatSeconds(range.startSeconds)
+      : `${formatSeconds(range.startSeconds)}-${formatSeconds(range.endSeconds)}`;
+    const label = range.label ? ` ${range.label}` : '';
+    return `- ${time}${label} [${range.source}]`;
+  }).join('\n');
+}
+
 async function refreshQueueItemMetadata(item) {
   const url = item.canonicalUrl || item.inputUrl;
   if (!url) throw new Error('Queue item has no video URL');
@@ -342,6 +447,11 @@ async function refreshQueueItemMetadata(item) {
     current.thumbnail = metadata.thumbnail || current.thumbnail || '';
     current.duration = metadata.duration ?? current.duration ?? null;
     current.description = metadata.description || current.description || '';
+    current.timestampRanges = mergeTimestampRanges(
+      current.timestampRanges,
+      parsed.timestampRanges,
+      extractTimestampRanges(metadata.description, 'description'),
+    );
     current.metadata = {
       ...(current.metadata || {}),
       ...metadata,
@@ -453,7 +563,14 @@ function buildPrompt(action, item, extraPrompt) {
     `- watchState: ${item.watchState}`,
     `- processingState: ${item.processingState}`,
     `- playbackPosition: ${formatPlaybackPosition(item.playbackPosition)}`,
+    `- timestampFocus: ${item.timestampFocus ? 'yes' : 'no'}`,
     item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
+    '',
+    'Timestamp context:',
+    formatTimestampRanges(item.timestampRanges),
+    item.timestampFocus && normalizeTimestampRanges(item.timestampRanges).length
+      ? 'Instruction: prioritize analysis around the timestamp context above before scanning the rest of the source.'
+      : 'Instruction: use timestamp context when relevant; no timestamp-only focus requested.',
     '',
     'Prior artifacts:',
     artifacts,
@@ -1014,9 +1131,10 @@ async function handleApi(req, res, pathname) {
     const item = await withStateMutation('patch queue item', async () => {
       const current = state.queue.find((entry) => entry.id === queuePatch[1]);
       if (!current) throw new Error('Queue item not found');
-      for (const key of ['watchState', 'processingState', 'notes', 'reviewOutcome', 'playbackPosition', 'description']) {
+      for (const key of ['watchState', 'processingState', 'notes', 'reviewOutcome', 'playbackPosition', 'description', 'timestampFocus']) {
         if (Object.hasOwn(body, key)) current[key] = body[key];
       }
+      if (Object.hasOwn(body, 'timestampRanges')) current.timestampRanges = normalizeTimestampRanges(body.timestampRanges);
       current.updatedAt = nowIso();
       return current;
     });
