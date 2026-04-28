@@ -44,12 +44,7 @@ The first target workflow is feeding videos into `living-doc-compositor` skills 
 
 This repo is open source under MIT.
 
-The full working app is currently on the `issue-1-video-intake-console-app` branch and PR:
-
-- PR: <https://github.com/triadflow/video-intake-console/pull/9>
 - Epic: <https://github.com/triadflow/video-intake-console/issues/1>
-
-The default `main` branch may lag behind while the app is still moving through review.
 
 ## Requirements
 
@@ -84,6 +79,7 @@ That directory is ignored by git.
 
 ```bash
 npm run check
+npm run smoke:concurrency
 ```
 
 Useful API probes while the server is running:
@@ -156,6 +152,17 @@ Jobs keep:
 - **Serial background work.** One local processing job at a time avoids runaway processes.
 - **Inspectable runs.** Every job should leave logs and enough metadata to reconstruct what happened.
 - **Small UI, real workflow.** The GUI is meant to support watching and dispatching, not become another dashboard.
+
+## Persistence And Local-Service Assumptions
+
+The server stores local state in `.video-intake-data/state.json` and logs under `.video-intake-data/logs/`.
+
+- State mutations are serialized in-process.
+- `state.json` writes use a temporary file followed by atomic rename.
+- Job stdout/stderr log writes are ordered per job stream.
+- The server binds to `127.0.0.1` and is intended for one local operator.
+
+This is not a hardened multi-user web service. It does not provide accounts, auth, CSRF protection, rate limiting, external process isolation, or database-backed cross-process locking.
 
 ## Non-Goals For Now
 

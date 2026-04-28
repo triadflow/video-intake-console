@@ -2,7 +2,7 @@
 import http from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -83,8 +83,11 @@ const MIME = {
 
 let state = null;
 const activeJobs = new Map();
+const logWriteQueues = new Map();
 let currentJobId = null;
 let workerStarting = false;
+let stateMutationQueue = Promise.resolve();
+let stateWriteQueue = Promise.resolve();
 
 function nowIso() {
   return new Date().toISOString();
@@ -115,10 +118,36 @@ async function loadState() {
   return state;
 }
 
+async function atomicWriteFile(filePath, contents) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const tmpPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`);
+  await writeFile(tmpPath, contents);
+  await rename(tmpPath, filePath);
+}
+
 async function saveState() {
   state.updatedAt = nowIso();
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(STATE_PATH, `${JSON.stringify(state, null, 2)}\n`);
+  const snapshot = `${JSON.stringify(state, null, 2)}\n`;
+  stateWriteQueue = stateWriteQueue
+    .catch(() => {})
+    .then(() => atomicWriteFile(STATE_PATH, snapshot));
+  return stateWriteQueue;
+}
+
+function withStateMutation(label, mutator, { save = true } = {}) {
+  const run = stateMutationQueue
+    .catch(() => {})
+    .then(async () => {
+      await loadState();
+      const result = await mutator(state);
+      const shouldSave = typeof save === 'function' ? save(result) : save;
+      if (shouldSave) await saveState();
+      return result;
+    });
+  stateMutationQueue = run.catch((err) => {
+    console.error(`[state] mutation failed (${label}): ${err.message}`);
+  });
+  return run;
 }
 
 function sendJson(res, status, payload) {
@@ -305,17 +334,21 @@ async function refreshQueueItemMetadata(item) {
   const parsed = parseYoutube(url);
   if (!parsed.videoId && item.videoId) parsed.videoId = item.videoId;
   const metadata = await resolveVideoMetadata(url, parsed);
-  item.title = metadata.title || item.title;
-  item.channel = metadata.channel || item.channel || '';
-  item.thumbnail = metadata.thumbnail || item.thumbnail || '';
-  item.duration = metadata.duration ?? item.duration ?? null;
-  item.description = metadata.description || item.description || '';
-  item.metadata = {
-    ...(item.metadata || {}),
-    ...metadata,
-  };
-  item.updatedAt = nowIso();
-  return item;
+  return withStateMutation('refresh queue item metadata', async () => {
+    const current = state.queue.find((entry) => entry.id === item.id);
+    if (!current) throw new Error('Queue item not found');
+    current.title = metadata.title || current.title;
+    current.channel = metadata.channel || current.channel || '';
+    current.thumbnail = metadata.thumbnail || current.thumbnail || '';
+    current.duration = metadata.duration ?? current.duration ?? null;
+    current.description = metadata.description || current.description || '';
+    current.metadata = {
+      ...(current.metadata || {}),
+      ...metadata,
+    };
+    current.updatedAt = nowIso();
+    return current;
+  });
 }
 
 function upsertPlaylistSubscription({ playlistId, url, title }) {
@@ -344,62 +377,64 @@ function upsertPlaylistSubscription({ playlistId, url, title }) {
 async function refreshPlaylistSubscription(subscription, { save = true } = {}) {
   if (!commandAvailable('yt-dlp')) throw new Error('yt-dlp is required for playlist refresh and is not available on PATH');
   const info = await runJsonCommand('yt-dlp', ['--flat-playlist', '--dump-single-json', subscription.url], 90_000);
-  const parsed = parseYoutube(subscription.url);
-  const playlistId = parsed.playlistId || subscription.playlistId;
-  subscription.playlistId = playlistId;
-  subscription.title = info.title || subscription.title || `Playlist ${playlistId}`;
-  subscription.url = subscription.url || playlistUrlFromId(playlistId);
+  return withStateMutation('refresh playlist', async () => {
+    const current = state.playlistSubscriptions.find((entry) => entry.id === subscription.id || entry.playlistId === subscription.playlistId) || subscription;
+    const parsed = parseYoutube(current.url);
+    const playlistId = parsed.playlistId || current.playlistId;
+    current.playlistId = playlistId;
+    current.title = info.title || current.title || `Playlist ${playlistId}`;
+    current.url = current.url || playlistUrlFromId(playlistId);
 
-  const stats = { added: 0, alreadyQueued: 0, dismissed: 0, skipped: 0, failed: 0 };
-  const added = [];
-  const skipped = { alreadyQueued: [], dismissed: [], failed: [] };
-  const entries = Array.isArray(info.entries) ? info.entries : [];
-  for (const entry of entries) {
-    const videoId = entry.id || '';
-    if (!videoId) {
-      stats.skipped++;
-      stats.failed++;
-      continue;
+    const stats = { added: 0, alreadyQueued: 0, dismissed: 0, skipped: 0, failed: 0 };
+    const added = [];
+    const skipped = { alreadyQueued: [], dismissed: [], failed: [] };
+    const entries = Array.isArray(info.entries) ? info.entries : [];
+    for (const entry of entries) {
+      const videoId = entry.id || '';
+      if (!videoId) {
+        stats.skipped++;
+        stats.failed++;
+        continue;
+      }
+      if (findQueueItemByVideoId(videoId)) {
+        stats.alreadyQueued++;
+        skipped.alreadyQueued.push(videoId);
+        continue;
+      }
+      if (findRemovedVideoByVideoId(videoId)) {
+        stats.dismissed++;
+        skipped.dismissed.push(videoId);
+        continue;
+      }
+      const itemParsed = {
+        input: `https://www.youtube.com/watch?v=${videoId}`,
+        canonicalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        videoId,
+        playlistId,
+      };
+      const metadata = {
+        title: entry.title || `YouTube video ${videoId}`,
+        channel: entry.channel || entry.uploader || '',
+        thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+        duration: entry.duration || null,
+        description: entry.description || '',
+        metadataSource: 'yt-dlp-flat-playlist',
+      };
+      added.push(itemFromVideo({
+        parsed: itemParsed,
+        metadata,
+        source: current.title ? `Playlist: ${current.title}` : `Playlist: ${playlistId}`,
+      }));
+      stats.added++;
     }
-    if (findQueueItemByVideoId(videoId)) {
-      stats.alreadyQueued++;
-      skipped.alreadyQueued.push(videoId);
-      continue;
-    }
-    if (findRemovedVideoByVideoId(videoId)) {
-      stats.dismissed++;
-      skipped.dismissed.push(videoId);
-      continue;
-    }
-    const itemParsed = {
-      input: `https://www.youtube.com/watch?v=${videoId}`,
-      canonicalUrl: `https://www.youtube.com/watch?v=${videoId}`,
-      videoId,
-      playlistId,
-    };
-    const metadata = {
-      title: entry.title || `YouTube video ${videoId}`,
-      channel: entry.channel || entry.uploader || '',
-      thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
-      duration: entry.duration || null,
-      description: entry.description || '',
-      metadataSource: 'yt-dlp-flat-playlist',
-    };
-    added.push(itemFromVideo({
-      parsed: itemParsed,
-      metadata,
-      source: subscription.title ? `Playlist: ${subscription.title}` : `Playlist: ${playlistId}`,
-    }));
-    stats.added++;
-  }
-  if (added.length) state.queue.unshift(...added);
-  subscription.lastCheckedAt = nowIso();
-  subscription.lastStats = stats;
-  subscription.status = 'ok';
-  subscription.error = '';
-  subscription.updatedAt = nowIso();
-  if (save) await saveState();
-  return { subscription, added, skipped, stats };
+    if (added.length) state.queue.unshift(...added);
+    current.lastCheckedAt = nowIso();
+    current.lastStats = stats;
+    current.status = 'ok';
+    current.error = '';
+    current.updatedAt = nowIso();
+    return { subscription: current, added, skipped, stats };
+  }, { save });
 }
 
 function buildPrompt(action, item, extraPrompt) {
@@ -579,70 +614,80 @@ async function refreshClaudeSessionForJob(job) {
 }
 
 async function refreshClaudeSessionsForJobs(jobs) {
-  let changed = false;
-  for (const job of jobs) {
-    if (!job.startedAt) continue;
-    if (job.claudeSession?.status === 'linked' && job.status !== 'running') continue;
-    changed = await refreshClaudeSessionForJob(job) || changed;
-  }
-  if (changed) await saveState();
+  return withStateMutation('refresh claude sessions', async () => {
+    let changed = false;
+    for (const job of jobs) {
+      if (!job.startedAt) continue;
+      if (job.claudeSession?.status === 'linked' && job.status !== 'running') continue;
+      changed = await refreshClaudeSessionForJob(job) || changed;
+    }
+    return changed;
+  }, { save: (changed) => changed });
 }
 
 async function appendLog(job, stream, text) {
   const field = stream === 'stderr' ? 'stderr' : 'stdout';
+  const logPath = path.join(LOG_DIR, `${job.id}.${field}.log`);
+  const key = `${job.id}:${field}`;
   job[field] += text;
-  await writeFile(path.join(LOG_DIR, `${job.id}.${field}.log`), job[field]);
+  const snapshot = job[field];
+  const next = (logWriteQueues.get(key) || Promise.resolve())
+    .catch(() => {})
+    .then(() => atomicWriteFile(logPath, snapshot));
+  logWriteQueues.set(key, next);
+  await next;
 }
 
 async function startJob({ itemId, actionId, extraPrompt }) {
-  const item = state.queue.find((entry) => entry.id === itemId);
-  if (!item) throw new Error('Queue item not found');
   const { actions } = await discoverActions();
   const action = actions.find((entry) => entry.id === actionId);
   if (!action) throw new Error('Action not found');
   if (!action.available) throw new Error(`Action is unavailable: ${action.label}`);
   if (!commandAvailable('claude')) throw new Error('claude CLI is not available on PATH');
 
-  const duplicate = state.jobs.find((job) => job.itemId === itemId && job.actionId === actionId && ['queued', 'waiting', 'running'].includes(job.status));
-  if (duplicate) throw new Error(`A ${action.label} job is already active for this video`);
+  const job = await withStateMutation('start job', async () => {
+    const item = state.queue.find((entry) => entry.id === itemId);
+    if (!item) throw new Error('Queue item not found');
+    const duplicate = state.jobs.find((entry) => entry.itemId === itemId && entry.actionId === actionId && ['queued', 'waiting', 'running'].includes(entry.status));
+    if (duplicate) throw new Error(`A ${action.label} job is already active for this video`);
 
-  const prompt = buildPrompt(action, item, extraPrompt || '');
-  const job = {
-    id: makeId('job'),
-    itemId,
-    actionId,
-    actionLabel: action.label,
-    cwd: action.cwd,
-    prompt,
-    timeoutMs: action.timeoutMs || DEFAULT_RUN_TIMEOUT_MS,
-    permissionMode: action.permissionMode || 'default',
-    addDirs: action.addDirs || [],
-    allowedTools: action.allowedTools || [],
-    status: 'waiting',
-    stdout: '',
-    stderr: '',
-    exitCode: null,
-    error: '',
-    startedAt: null,
-    finishedAt: null,
-    durationMs: null,
-    downstreamStatus: null,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  };
-  state.jobs.unshift(job);
-  item.processingState = actionId === 'transcribe' ? 'queued' : 'queued';
-  item.history ||= [];
-  item.history.unshift({
-    id: makeId('hist'),
-    time: nowIso(),
-    title: `${action.label} queued`,
-    status: 'waiting',
-    detail: 'Job persisted and is waiting for the serial worker.',
-    jobId: job.id,
+    const nextJob = {
+      id: makeId('job'),
+      itemId,
+      actionId,
+      actionLabel: action.label,
+      cwd: action.cwd,
+      prompt: buildPrompt(action, item, extraPrompt || ''),
+      timeoutMs: action.timeoutMs || DEFAULT_RUN_TIMEOUT_MS,
+      permissionMode: action.permissionMode || 'default',
+      addDirs: action.addDirs || [],
+      allowedTools: action.allowedTools || [],
+      status: 'waiting',
+      stdout: '',
+      stderr: '',
+      exitCode: null,
+      error: '',
+      startedAt: null,
+      finishedAt: null,
+      durationMs: null,
+      downstreamStatus: null,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    };
+    state.jobs.unshift(nextJob);
+    item.processingState = actionId === 'transcribe' ? 'queued' : 'queued';
+    item.history ||= [];
+    item.history.unshift({
+      id: makeId('hist'),
+      time: nowIso(),
+      title: `${action.label} queued`,
+      status: 'waiting',
+      detail: 'Job persisted and is waiting for the serial worker.',
+      jobId: nextJob.id,
+    });
+    item.updatedAt = nowIso();
+    return nextJob;
   });
-  item.updatedAt = nowIso();
-  await saveState();
 
   processNextJob().catch((err) => console.error('[job-queue] unhandled failure', err));
   return job;
@@ -664,39 +709,42 @@ async function processNextJob() {
 
 async function runJob(jobId) {
   await loadState();
-  const job = state.jobs.find((entry) => entry.id === jobId);
-  if (!job) return;
-  if (!['waiting', 'queued'].includes(job.status)) return;
-  const item = state.queue.find((entry) => entry.id === job.itemId);
-  const action = CONFIG.actions.find((entry) => entry.id === job.actionId);
-  job.status = 'running';
-  job.startedAt = nowIso();
-  job.updatedAt = nowIso();
-  job.claudeSession = {
-    status: 'locating',
-    projectDir: claudeProjectDirForCwd(job.cwd),
-    logPath: '',
-    sessionId: '',
-    eventCount: 0,
-    toolUseCount: 0,
-    toolResultCount: 0,
-    thinkingBlockCount: 0,
-    toolNames: [],
-  };
-  if (item) {
-    item.processingState = job.actionId === 'transcribe' ? 'transcribing' : 'running_skill';
-    item.history ||= [];
-    item.history.unshift({
-      id: makeId('hist'),
-      time: nowIso(),
-      title: `${job.actionLabel} started`,
-      status: 'running',
-      detail: 'Serial worker started local Claude Code for this job.',
-      jobId: job.id,
-    });
-    item.updatedAt = nowIso();
-  }
-  await saveState();
+  const started = await withStateMutation('run job start', async () => {
+    const job = state.jobs.find((entry) => entry.id === jobId);
+    if (!job || !['waiting', 'queued'].includes(job.status)) return null;
+    const item = state.queue.find((entry) => entry.id === job.itemId);
+    const action = CONFIG.actions.find((entry) => entry.id === job.actionId);
+    job.status = 'running';
+    job.startedAt = nowIso();
+    job.updatedAt = nowIso();
+    job.claudeSession = {
+      status: 'locating',
+      projectDir: claudeProjectDirForCwd(job.cwd),
+      logPath: '',
+      sessionId: '',
+      eventCount: 0,
+      toolUseCount: 0,
+      toolResultCount: 0,
+      thinkingBlockCount: 0,
+      toolNames: [],
+    };
+    if (item) {
+      item.processingState = job.actionId === 'transcribe' ? 'transcribing' : 'running_skill';
+      item.history ||= [];
+      item.history.unshift({
+        id: makeId('hist'),
+        time: nowIso(),
+        title: `${job.actionLabel} started`,
+        status: 'running',
+        detail: 'Serial worker started local Claude Code for this job.',
+        jobId: job.id,
+      });
+      item.updatedAt = nowIso();
+    }
+    return { job, item, action };
+  });
+  if (!started) return;
+  const { job, item, action } = started;
 
   const start = Date.now();
   const timeoutMs = job.timeoutMs || action?.timeoutMs || DEFAULT_RUN_TIMEOUT_MS;
@@ -742,85 +790,89 @@ async function runJob(jobId) {
 }
 
 async function finishJob(job, item, action, code, error, durationMs) {
-  job.exitCode = code;
-  job.durationMs = durationMs;
-  job.finishedAt = nowIso();
-  job.error = error || '';
-  job.status = code === 0 && !error ? 'succeeded' : 'failed';
-  job.updatedAt = nowIso();
-  if (action?.cwd && existsSync(path.join(action.cwd, '.git'))) {
-    job.downstreamStatus = await changedFiles(action.cwd);
-  }
-  await refreshClaudeSessionForJob(job);
-
-  if (item) {
-    const changed = job.downstreamStatus?.files?.length > 0;
-    if (job.status === 'failed') item.processingState = 'failed';
-    else if (action?.successProcessingState === 'transcribed') item.processingState = 'transcribed';
-    else item.processingState = changed ? 'needs_review' : action?.successProcessingState || 'needs_review';
-    item.history ||= [];
-    item.history.unshift({
-      id: makeId('hist'),
-      time: nowIso(),
-      title: `${job.actionLabel} ${job.status}`,
-      status: job.status,
-      detail: job.status === 'failed'
-        ? (job.error || `Process exited ${code}`)
-        : (changed ? 'Run completed and downstream files need review.' : 'Run completed without detected downstream file changes.'),
-      jobId: job.id,
-      durationMs,
-      changedFiles: job.downstreamStatus?.files || [],
-    });
-    if (job.status === 'succeeded') {
-      item.artifacts ||= [];
-      item.artifacts.unshift({
-        id: makeId('artifact'),
-        type: 'run-log',
-        summary: `${job.actionLabel} ${job.status}`,
-        stdoutPath: path.join(LOG_DIR, `${job.id}.stdout.log`),
-        stderrPath: path.join(LOG_DIR, `${job.id}.stderr.log`),
-        createdAt: nowIso(),
-      });
+  await withStateMutation('finish job', async () => {
+    const currentJob = state.jobs.find((entry) => entry.id === job.id) || job;
+    const currentItem = state.queue.find((entry) => entry.id === currentJob.itemId) || item;
+    currentJob.exitCode = code;
+    currentJob.durationMs = durationMs;
+    currentJob.finishedAt = nowIso();
+    currentJob.error = error || '';
+    currentJob.status = code === 0 && !error ? 'succeeded' : 'failed';
+    currentJob.updatedAt = nowIso();
+    if (action?.cwd && existsSync(path.join(action.cwd, '.git'))) {
+      currentJob.downstreamStatus = await changedFiles(action.cwd);
     }
-    item.updatedAt = nowIso();
-  }
-  await saveState();
+    await refreshClaudeSessionForJob(currentJob);
+
+    if (currentItem) {
+      const changed = currentJob.downstreamStatus?.files?.length > 0;
+      if (currentJob.status === 'failed') currentItem.processingState = 'failed';
+      else if (action?.successProcessingState === 'transcribed') currentItem.processingState = 'transcribed';
+      else currentItem.processingState = changed ? 'needs_review' : action?.successProcessingState || 'needs_review';
+      currentItem.history ||= [];
+      currentItem.history.unshift({
+        id: makeId('hist'),
+        time: nowIso(),
+        title: `${currentJob.actionLabel} ${currentJob.status}`,
+        status: currentJob.status,
+        detail: currentJob.status === 'failed'
+          ? (currentJob.error || `Process exited ${code}`)
+          : (changed ? 'Run completed and downstream files need review.' : 'Run completed without detected downstream file changes.'),
+        jobId: currentJob.id,
+        durationMs,
+        changedFiles: currentJob.downstreamStatus?.files || [],
+      });
+      if (currentJob.status === 'succeeded') {
+        currentItem.artifacts ||= [];
+        currentItem.artifacts.unshift({
+          id: makeId('artifact'),
+          type: 'run-log',
+          summary: `${currentJob.actionLabel} ${currentJob.status}`,
+          stdoutPath: path.join(LOG_DIR, `${currentJob.id}.stdout.log`),
+          stderrPath: path.join(LOG_DIR, `${currentJob.id}.stderr.log`),
+          createdAt: nowIso(),
+        });
+      }
+      currentItem.updatedAt = nowIso();
+    }
+  });
   if (currentJobId === job.id) currentJobId = null;
   processNextJob().catch((err) => console.error('[job-queue] unhandled failure', err));
 }
 
 async function recoverInterruptedJobs() {
-  await loadState();
-  let changed = false;
-  for (const job of state.jobs) {
-    if (job.status === 'queued') {
-      job.status = 'waiting';
-      job.updatedAt = nowIso();
-      changed = true;
-    }
-    if (job.status === 'running') {
-      job.status = 'failed';
-      job.error = 'Server restarted while this job was running; job marked interrupted.';
-      job.finishedAt = nowIso();
-      job.updatedAt = nowIso();
-      const item = state.queue.find((entry) => entry.id === job.itemId);
-      if (item) {
-        item.processingState = 'failed';
-        item.history ||= [];
-        item.history.unshift({
-          id: makeId('hist'),
-          time: nowIso(),
-          title: `${job.actionLabel} interrupted`,
-          status: 'failed',
-          detail: job.error,
-          jobId: job.id,
-        });
-        item.updatedAt = nowIso();
+  await withStateMutation('recover interrupted jobs', async () => {
+    let changed = false;
+    for (const job of state.jobs) {
+      if (job.status === 'queued') {
+        job.status = 'waiting';
+        job.updatedAt = nowIso();
+        changed = true;
       }
-      changed = true;
+      if (job.status === 'running') {
+        job.status = 'failed';
+        job.error = 'Server restarted while this job was running; job marked interrupted.';
+        job.finishedAt = nowIso();
+        job.updatedAt = nowIso();
+        const item = state.queue.find((entry) => entry.id === job.itemId);
+        if (item) {
+          item.processingState = 'failed';
+          item.history ||= [];
+          item.history.unshift({
+            id: makeId('hist'),
+            time: nowIso(),
+            title: `${job.actionLabel} interrupted`,
+            status: 'failed',
+            detail: job.error,
+            jobId: job.id,
+          });
+          item.updatedAt = nowIso();
+        }
+        changed = true;
+      }
     }
-  }
-  if (changed) await saveState();
+    return changed;
+  }, { save: (changed) => changed });
 }
 
 async function refreshAllPlaylistsOnStartup() {
@@ -830,11 +882,13 @@ async function refreshAllPlaylistsOnStartup() {
       await refreshPlaylistSubscription(subscription);
       console.log(`[playlist] refreshed ${subscription.title || subscription.playlistId}`);
     } catch (err) {
-      subscription.status = 'failed';
-      subscription.error = err.message;
-      subscription.lastCheckedAt = nowIso();
-      subscription.updatedAt = nowIso();
-      await saveState();
+      await withStateMutation('playlist startup refresh failure', async () => {
+        const current = state.playlistSubscriptions.find((entry) => entry.id === subscription.id || entry.playlistId === subscription.playlistId) || subscription;
+        current.status = 'failed';
+        current.error = err.message;
+        current.lastCheckedAt = nowIso();
+        current.updatedAt = nowIso();
+      });
       console.error(`[playlist] refresh failed for ${subscription.title || subscription.playlistId}: ${err.message}`);
     }
   }
@@ -873,18 +927,22 @@ async function handleApi(req, res, pathname) {
       return;
     }
     const metadata = await resolveVideoMetadata(body.url, parsed);
-    const item = itemFromVideo({ parsed, metadata, source: body.source || 'Manual' });
-    forgetRemovedVideo(item.videoId);
-    state.queue.unshift(item);
-    await saveState();
-    sendJson(res, 201, { item, duplicate: false });
+    const result = await withStateMutation('add queue video', async () => {
+      const duplicate = findQueueItemByVideoId(parsed.videoId);
+      if (duplicate) return { item: duplicate, duplicate: true, message: 'Video already exists in queue' };
+      const item = itemFromVideo({ parsed, metadata, source: body.source || 'Manual' });
+      forgetRemovedVideo(item.videoId);
+      state.queue.unshift(item);
+      return { item, duplicate: false };
+    });
+    sendJson(res, result.duplicate ? 200 : 201, result);
     return;
   }
   if (req.method === 'POST' && pathname === '/api/queue/playlist') {
     const body = await readJson(req);
     const parsed = parseYoutube(body.url || '');
     if (!parsed.playlistId) throw new Error('No YouTube playlist id found');
-    const subscription = upsertPlaylistSubscription({ playlistId: parsed.playlistId, url: body.url });
+    const subscription = await withStateMutation('upsert playlist subscription', async () => upsertPlaylistSubscription({ playlistId: parsed.playlistId, url: body.url }));
     const result = await refreshPlaylistSubscription(subscription);
     sendJson(res, 201, result);
     return;
@@ -906,56 +964,62 @@ async function handleApi(req, res, pathname) {
   if (req.method === 'POST' && queueMetadata) {
     const item = state.queue.find((entry) => entry.id === queueMetadata[1]);
     if (!item) throw new Error('Queue item not found');
-    await refreshQueueItemMetadata(item);
-    await saveState();
-    sendJson(res, 200, { item });
+    const refreshed = await refreshQueueItemMetadata(item);
+    sendJson(res, 200, { item: refreshed });
     return;
   }
   const queuePatch = pathname.match(/^\/api\/queue\/([^/]+)$/);
   if (req.method === 'DELETE' && queuePatch) {
     const itemId = queuePatch[1];
-    const itemIndex = state.queue.findIndex((entry) => entry.id === itemId);
-    if (itemIndex < 0) throw new Error('Queue item not found');
-    const activeJob = state.jobs.find((job) => job.itemId === itemId && ['queued', 'waiting', 'running'].includes(job.status));
-    if (activeJob) {
-      sendError(res, 409, 'Cannot remove a video while a job is active for it', { jobId: activeJob.id });
+    const result = await withStateMutation('remove queue item', async () => {
+      const itemIndex = state.queue.findIndex((entry) => entry.id === itemId);
+      if (itemIndex < 0) throw new Error('Queue item not found');
+      const activeJob = state.jobs.find((job) => job.itemId === itemId && ['queued', 'waiting', 'running'].includes(job.status));
+      if (activeJob) {
+        return { conflict: true, jobId: activeJob.id };
+      }
+      const [removed] = state.queue.splice(itemIndex, 1);
+      forgetRemovedVideo(removed.videoId);
+      state.removedVideos.unshift({
+        id: makeId('removed'),
+        videoId: removed.videoId,
+        title: removed.title,
+        canonicalUrl: removed.canonicalUrl,
+        playlistId: removed.playlistId || '',
+        source: removed.source || '',
+        removedAt: nowIso(),
+      });
+      const relatedJobs = state.jobs.filter((job) => job.itemId === itemId);
+      for (const job of relatedJobs) {
+        job.orphanedQueueItem = {
+          id: removed.id,
+          title: removed.title,
+          videoId: removed.videoId,
+          canonicalUrl: removed.canonicalUrl,
+          removedAt: nowIso(),
+        };
+        job.updatedAt = nowIso();
+      }
+      return { removed, preservedJobs: relatedJobs.length };
+    }, { save: (result) => !result.conflict });
+    if (result.conflict) {
+      sendError(res, 409, 'Cannot remove a video while a job is active for it', { jobId: result.jobId });
       return;
     }
-    const [removed] = state.queue.splice(itemIndex, 1);
-    forgetRemovedVideo(removed.videoId);
-    state.removedVideos.unshift({
-      id: makeId('removed'),
-      videoId: removed.videoId,
-      title: removed.title,
-      canonicalUrl: removed.canonicalUrl,
-      playlistId: removed.playlistId || '',
-      source: removed.source || '',
-      removedAt: nowIso(),
-    });
-    const relatedJobs = state.jobs.filter((job) => job.itemId === itemId);
-    for (const job of relatedJobs) {
-      job.orphanedQueueItem = {
-        id: removed.id,
-        title: removed.title,
-        videoId: removed.videoId,
-        canonicalUrl: removed.canonicalUrl,
-        removedAt: nowIso(),
-      };
-      job.updatedAt = nowIso();
-    }
-    await saveState();
-    sendJson(res, 200, { removed, preservedJobs: relatedJobs.length });
+    sendJson(res, 200, result);
     return;
   }
   if (req.method === 'PATCH' && queuePatch) {
     const body = await readJson(req);
-    const item = state.queue.find((entry) => entry.id === queuePatch[1]);
-    if (!item) throw new Error('Queue item not found');
-    for (const key of ['watchState', 'processingState', 'notes', 'reviewOutcome', 'playbackPosition', 'description']) {
-      if (Object.hasOwn(body, key)) item[key] = body[key];
-    }
-    item.updatedAt = nowIso();
-    await saveState();
+    const item = await withStateMutation('patch queue item', async () => {
+      const current = state.queue.find((entry) => entry.id === queuePatch[1]);
+      if (!current) throw new Error('Queue item not found');
+      for (const key of ['watchState', 'processingState', 'notes', 'reviewOutcome', 'playbackPosition', 'description']) {
+        if (Object.hasOwn(body, key)) current[key] = body[key];
+      }
+      current.updatedAt = nowIso();
+      return current;
+    });
     sendJson(res, 200, { item });
     return;
   }
@@ -974,7 +1038,7 @@ async function handleApi(req, res, pathname) {
   if (req.method === 'GET' && jobMatch) {
     const job = state.jobs.find((entry) => entry.id === jobMatch[1]);
     if (!job) throw new Error('Job not found');
-    if (await refreshClaudeSessionForJob(job)) await saveState();
+    await withStateMutation('refresh job claude session', async () => refreshClaudeSessionForJob(job), { save: (changed) => changed });
     sendJson(res, 200, { job });
     return;
   }
