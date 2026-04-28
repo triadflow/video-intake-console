@@ -48,12 +48,10 @@ const els = {
   resumeStatePill: document.getElementById('resumeStatePill'),
   labelCount: document.getElementById('labelCount'),
   currentLabels: document.getElementById('currentLabels'),
-  labelSelect: document.getElementById('labelSelect'),
-  applyLabel: document.getElementById('applyLabel'),
+  labelSuggestions: document.getElementById('labelSuggestions'),
   labelManager: document.getElementById('labelManager'),
   labelManagerList: document.getElementById('labelManagerList'),
   labelName: document.getElementById('labelName'),
-  labelColor: document.getElementById('labelColor'),
   addLabel: document.getElementById('addLabel'),
   videoDescription: document.getElementById('videoDescription'),
   timestampText: document.getElementById('timestampText'),
@@ -163,6 +161,17 @@ function labelDotStyle(label) {
 
 function labelById(labelId) {
   return state.labels.find((label) => label.id === labelId) || null;
+}
+
+function labelByName(name) {
+  const key = String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  return state.labels.find((label) => String(label.name || '').trim().replace(/\s+/g, ' ').toLowerCase() === key) || null;
+}
+
+function colorForLabelName(name) {
+  const palette = ['#1d6fd8', '#178558', '#a86405', '#6c4ed9', '#c43d32', '#0f766e', '#7c3aed'];
+  const score = [...String(name || '')].reduce((total, char) => total + char.charCodeAt(0), 0);
+  return palette[score % palette.length];
 }
 
 function labelsForItem(item) {
@@ -346,14 +355,11 @@ function renderLabels(item) {
   }
 
   const available = state.labels.filter((label) => !assigned.has(label.id));
-  const fallbackOption = !item
-    ? 'Select a video'
-    : (!state.labels.length ? 'No labels yet' : 'All labels applied');
-  els.labelSelect.innerHTML = available.length
-    ? available.map((label) => `<option value="${escapeHtml(label.id)}">${escapeHtml(label.name)}</option>`).join('')
-    : `<option value="">${escapeHtml(fallbackOption)}</option>`;
-  els.labelSelect.disabled = !item || !available.length;
-  els.applyLabel.disabled = !item || !available.length;
+  els.labelSuggestions.innerHTML = available.map((label) => (
+    `<option value="${escapeHtml(label.name)}"></option>`
+  )).join('');
+  els.labelName.disabled = !item;
+  els.addLabel.disabled = !item;
   els.labelManager.open = state.labelManagerOpen;
 
   els.labelManagerList.innerHTML = state.labels.map((label) => `
@@ -998,11 +1004,17 @@ async function patchCurrent(patch) {
 }
 
 async function createLabel() {
-  const name = els.labelName.value.trim();
+  const name = els.labelName.value.trim().replace(/\s+/g, ' ');
   if (!name) return;
+  const existing = labelByName(name);
+  if (existing) {
+    els.labelName.value = '';
+    await setCurrentLabel(existing.id, true);
+    return;
+  }
   const result = await api('/api/labels', {
     method: 'POST',
-    body: JSON.stringify({ name, color: els.labelColor.value }),
+    body: JSON.stringify({ name, color: colorForLabelName(name) }),
   });
   els.labelName.value = '';
   const item = currentItem();
@@ -1043,11 +1055,6 @@ async function setCurrentLabel(labelId, enabled) {
   else next.delete(labelId);
   item.labelIds = [...next];
   await patchCurrent({ labelIds: item.labelIds });
-}
-
-async function applySelectedLabel() {
-  if (!els.labelSelect.value) return;
-  await setCurrentLabel(els.labelSelect.value, true);
 }
 
 function saveWatchNotes(itemId, notes) {
@@ -1146,7 +1153,6 @@ els.videoUrl.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') addVideo().catch((err) => alert(err.message));
 });
 els.mockPlaylist.addEventListener('click', () => importPlaylist().catch((err) => alert(err.message)));
-els.applyLabel.addEventListener('click', () => applySelectedLabel().catch((err) => alert(err.message)));
 els.addLabel.addEventListener('click', () => createLabel().catch((err) => alert(err.message)));
 els.labelName.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') createLabel().catch((err) => alert(err.message));

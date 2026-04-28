@@ -629,14 +629,6 @@
       height: 12px;
     }
 
-    .label-assign-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 38px;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-
     .label-row {
       display: grid;
       grid-template-columns: 38px minmax(0, 1fr) 34px 34px;
@@ -661,15 +653,13 @@
 
     .label-create-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 42px 38px;
+      grid-template-columns: minmax(0, 1fr) 38px;
       gap: 8px;
       align-items: center;
     }
 
     .label-manager {
-      margin-top: 10px;
-      border-top: 1px solid var(--line);
-      padding-top: 8px;
+      margin: 0;
     }
 
     .label-manager summary {
@@ -677,6 +667,9 @@
       color: var(--muted);
       font-size: 12px;
       font-weight: 800;
+    }
+
+    .label-manager[open] summary {
       margin-bottom: 8px;
     }
 
@@ -1034,23 +1027,13 @@
               <span class="counter" id="labelCount">0 labels</span>
             </div>
             <div class="current-labels" id="currentLabels"></div>
-            <div class="label-assign-row">
-              <select id="labelSelect" aria-label="Add existing label"></select>
-              <button class="icon-btn" id="applyLabel" type="button" title="Apply selected label" aria-label="Apply selected label">
+            <div class="label-create-row">
+              <input id="labelName" type="text" list="labelSuggestions" placeholder="Add or create label">
+              <datalist id="labelSuggestions"></datalist>
+              <button class="icon-btn" id="addLabel" type="button" title="Add label to video" aria-label="Add label to video">
                 <i data-lucide="tag"></i>
               </button>
             </div>
-            <div class="label-create-row">
-              <input id="labelName" type="text" placeholder="New label">
-              <input id="labelColor" type="color" value="#1d6fd8" aria-label="New label color">
-              <button class="icon-btn" id="addLabel" type="button" title="Add label" aria-label="Add label">
-                <i data-lucide="plus"></i>
-              </button>
-            </div>
-            <details class="label-manager" id="labelManager">
-              <summary>Manage labels</summary>
-              <div class="label-manage-list" id="labelManagerList"></div>
-            </details>
           </div>
 
           <div class="description-card">
@@ -1112,6 +1095,13 @@
             <i data-lucide="send"></i>
             Queue background run
           </button>
+        </section>
+
+        <section class="job-card" style="margin-top:14px">
+          <details class="label-manager" id="labelManager">
+            <summary>Manage labels</summary>
+            <div class="label-manage-list" id="labelManagerList"></div>
+          </details>
         </section>
 
         <section class="job-card" style="margin-top:14px">
