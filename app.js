@@ -1,4 +1,5 @@
 const filters = [
+  { id: 'today', label: 'Today' },
   { id: 'decision', label: 'Needs decision' },
   { id: 'all', label: 'All' },
   { id: 'unprocessed', label: 'Unprocessed' },
@@ -22,7 +23,7 @@ let state = {
   warnings: [],
   claudeAvailable: false,
   ytDlpAvailable: false,
-  activeFilter: 'decision',
+  activeFilter: 'today',
   activeLabelId: '',
   labelManagerOpen: false,
   currentId: '',
@@ -98,7 +99,8 @@ async function api(path, options = {}) {
 }
 
 function currentItem() {
-  return state.queue.find((item) => item.id === state.currentId) || state.queue[0] || null;
+  const visible = filteredQueue();
+  return visible.find((item) => item.id === state.currentId) || visible[0] || null;
 }
 
 function selectedAction() {
@@ -106,6 +108,7 @@ function selectedAction() {
 }
 
 function matchesFilter(item, filterId) {
+  if (filterId === 'today') return isAddedToday(item);
   if (filterId === 'all') return true;
   if (filterId === 'decision') return decisionStates.has(item.processingState);
   if (filterId === 'skipped') return item.watchState === 'skipped';
@@ -118,6 +121,16 @@ function matchesLabelFilter(item) {
 
 function filteredQueue() {
   return state.queue.filter((item) => matchesFilter(item, state.activeFilter) && matchesLabelFilter(item));
+}
+
+function isAddedToday(item) {
+  const createdAt = Date.parse(item?.createdAt || '');
+  if (!Number.isFinite(createdAt)) return false;
+  const created = new Date(createdAt);
+  const today = new Date();
+  return created.getFullYear() === today.getFullYear()
+    && created.getMonth() === today.getMonth()
+    && created.getDate() === today.getDate();
 }
 
 function escapeHtml(value) {
@@ -947,8 +960,9 @@ async function refresh() {
   if (state.activeLabelId && !state.labels.some((label) => label.id === state.activeLabelId)) {
     state.activeLabelId = '';
   }
-  if (!state.currentId || !state.queue.some((item) => item.id === state.currentId)) {
-    state.currentId = state.queue.find((item) => decisionStates.has(item.processingState))?.id || state.queue[0]?.id || '';
+  const visible = filteredQueue();
+  if (!state.currentId || !visible.some((item) => item.id === state.currentId)) {
+    state.currentId = visible[0]?.id || '';
   }
   if (!state.actions.some((action) => action.id === state.selectedAction)) {
     state.selectedAction = state.actions[0]?.id || '';
