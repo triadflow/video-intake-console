@@ -288,11 +288,31 @@
       line-height: 1.25;
     }
 
+    .filter-box {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      box-shadow: 0 4px 16px rgba(23, 27, 32, 0.04);
+      margin: 0 0 14px;
+    }
+
+    .filter-query-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 38px 38px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .filter-query-row input {
+      min-height: 38px;
+    }
+
     .filter-row {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
-      margin: 0 0 14px;
+      margin: 0 0 8px;
     }
 
     .filter-chip {
@@ -983,7 +1003,18 @@
 
         <div class="playlist-list" id="playlistList"></div>
 
-        <div class="filter-row" id="filterRow" aria-label="Queue filters"></div>
+        <div class="filter-box">
+          <div class="filter-row" id="filterRow" aria-label="Saved queue views"></div>
+          <div class="filter-query-row">
+            <input id="filterQuery" type="text" placeholder='Filter: created:today label:agents OR label:enterprise'>
+            <button class="icon-btn" id="saveFilterView" type="button" title="Save filter as view" aria-label="Save filter as view">
+              <i data-lucide="save"></i>
+            </button>
+            <button class="icon-btn" id="deleteFilterView" type="button" title="Delete saved view" aria-label="Delete saved view">
+              <i data-lucide="trash-2"></i>
+            </button>
+          </div>
+        </div>
 
         <div class="queue-list" id="queueList"></div>
       </aside>

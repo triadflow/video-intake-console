@@ -71,6 +71,7 @@ await writeFile(statePath, `${JSON.stringify({
     updatedAt: new Date().toISOString(),
   }],
   labels: [],
+  filterViews: [],
   jobs: [],
   removedVideos: [],
   playlistSubscriptions: [],
@@ -108,15 +109,28 @@ try {
     method: 'PATCH',
     body: JSON.stringify({ name: 'Research review', color: '#178558' }),
   });
+  const createdView = await request('/api/filter-views', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Smoke view', query: 'created:today label:Research' }),
+  });
+  const viewId = createdView.view.id;
+  await request(`/api/filter-views/${viewId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: 'Smoke review', query: 'status:decision OR label:Research' }),
+  });
 
   const finalState = JSON.parse(await readFile(statePath, 'utf8'));
   const item = finalState.queue.find((entry) => entry.id === itemId);
   const label = finalState.labels.find((entry) => entry.id === labelId);
+  const view = finalState.filterViews.find((entry) => entry.id === viewId);
   const failures = [];
   if (!item) failures.push('queue item missing');
   if (!label) failures.push('label missing');
   if (label?.name !== 'Research review') failures.push('label update lost');
   if (label?.color !== '#178558') failures.push('label color update lost');
+  if (!view) failures.push('filter view missing');
+  if (view?.name !== 'Smoke review') failures.push('filter view update lost');
+  if (view?.query !== 'status:decision OR label:Research') failures.push('filter view query update lost');
   if (item?.notes !== 'concurrent notes') failures.push('notes patch lost');
   if (item?.reviewOutcome !== 'keep') failures.push('review outcome patch lost');
   if (item?.watchState !== 'watching') failures.push('watch state patch lost');
@@ -127,13 +141,17 @@ try {
   if (item?.timestampRanges?.[0]?.startSeconds !== 30) failures.push('timestamp range patch lost');
   if (failures.length) throw new Error(failures.join('; '));
   await request(`/api/labels/${labelId}`, { method: 'DELETE' });
+  await request(`/api/filter-views/${viewId}`, { method: 'DELETE' });
   const deletedState = JSON.parse(await readFile(statePath, 'utf8'));
   const deletedItem = deletedState.queue.find((entry) => entry.id === itemId);
   if (deletedState.labels.some((entry) => entry.id === labelId)) throw new Error('label delete lost');
+  if (deletedState.filterViews.some((entry) => entry.id === viewId)) throw new Error('filter view delete lost');
   if (deletedItem?.labelIds?.includes(labelId)) throw new Error('deleted label still assigned to queue item');
   console.log('state concurrency smoke passed');
 } finally {
   child.kill('SIGTERM');
-  await new Promise((resolve) => child.once('close', resolve));
+  if (child.exitCode === null) {
+    await new Promise((resolve) => child.once('close', resolve));
+  }
   await rm(tempRoot, { recursive: true, force: true });
 }

@@ -1,14 +1,7 @@
-const filters = [
-  { id: 'today', label: 'Today' },
-  { id: 'decision', label: 'Needs decision' },
-  { id: 'all', label: 'All' },
-  { id: 'unprocessed', label: 'Unprocessed' },
-  { id: 'queued', label: 'Queued' },
-  { id: 'transcribed', label: 'Transcribed' },
-  { id: 'needs_review', label: 'Needs review' },
-  { id: 'integrated', label: 'Integrated' },
-  { id: 'failed', label: 'Failed' },
-  { id: 'skipped', label: 'Skipped' },
+const builtinViews = [
+  { id: 'builtin:today', name: 'Today', query: 'created:today' },
+  { id: 'builtin:decision', name: 'Needs decision', query: 'status:decision' },
+  { id: 'builtin:all', name: 'All', query: '' },
 ];
 
 const decisionStates = new Set(['unprocessed', 'transcribed', 'needs_review', 'failed']);
@@ -16,6 +9,7 @@ const decisionStates = new Set(['unprocessed', 'transcribed', 'needs_review', 'f
 let state = {
   queue: [],
   labels: [],
+  filterViews: [],
   jobs: [],
   playlists: [],
   removedVideos: [],
@@ -23,8 +17,8 @@ let state = {
   warnings: [],
   claudeAvailable: false,
   ytDlpAvailable: false,
-  activeFilter: 'today',
-  activeLabelId: '',
+  filterQuery: 'created:today',
+  activeViewId: 'builtin:today',
   labelManagerOpen: false,
   currentId: '',
   selectedAction: 'transcribe',
@@ -41,6 +35,9 @@ const els = {
   playlistList: document.getElementById('playlistList'),
   queueCount: document.getElementById('queueCount'),
   filterRow: document.getElementById('filterRow'),
+  filterQuery: document.getElementById('filterQuery'),
+  saveFilterView: document.getElementById('saveFilterView'),
+  deleteFilterView: document.getElementById('deleteFilterView'),
   videoFrame: document.getElementById('videoFrame'),
   currentTitle: document.getElementById('currentTitle'),
   currentUrl: document.getElementById('currentUrl'),
@@ -107,20 +104,8 @@ function selectedAction() {
   return state.actions.find((action) => action.id === state.selectedAction) || state.actions[0] || null;
 }
 
-function matchesFilter(item, filterId) {
-  if (filterId === 'today') return isAddedToday(item);
-  if (filterId === 'all') return true;
-  if (filterId === 'decision') return decisionStates.has(item.processingState);
-  if (filterId === 'skipped') return item.watchState === 'skipped';
-  return item.processingState === filterId;
-}
-
-function matchesLabelFilter(item) {
-  return !state.activeLabelId || (item.labelIds || []).includes(state.activeLabelId);
-}
-
 function filteredQueue() {
-  return state.queue.filter((item) => matchesFilter(item, state.activeFilter) && matchesLabelFilter(item));
+  return state.queue.filter((item) => matchesFilterQuery(item, state.filterQuery));
 }
 
 function isAddedToday(item) {
@@ -131,6 +116,134 @@ function isAddedToday(item) {
   return created.getFullYear() === today.getFullYear()
     && created.getMonth() === today.getMonth()
     && created.getDate() === today.getDate();
+}
+
+function localDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function allViews() {
+  return [...builtinViews, ...state.filterViews.map((view) => ({ ...view, id: `custom:${view.id}` }))];
+}
+
+function normalizeQuery(query) {
+  return String(query || '').trim().replace(/\s+/g, ' ');
+}
+
+function tokenizeFilterQuery(query) {
+  const tokens = [];
+  const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match;
+  while ((match = pattern.exec(query))) {
+    tokens.push(match[1] ?? match[2] ?? match[3]);
+  }
+  return tokens;
+}
+
+function matchText(value, needle) {
+  return String(value || '').toLowerCase().includes(String(needle || '').toLowerCase());
+}
+
+function itemSearchText(item) {
+  return [
+    item.title,
+    item.channel,
+    item.source,
+    item.watchState,
+    item.processingState,
+    labelsForItem(item).map((label) => label.name).join(' '),
+  ].filter(Boolean).join(' ');
+}
+
+function matchesStatus(item, value) {
+  const normalized = String(value || '').toLowerCase().replaceAll('-', '_');
+  if (normalized === 'decision') return decisionStates.has(item.processingState);
+  return item.processingState === normalized;
+}
+
+function matchesCreated(item, value) {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized === 'today') return isAddedToday(item);
+  return localDateKey(item.createdAt) === normalized;
+}
+
+function matchesCreatedComparison(item, operator, value) {
+  const itemDate = localDateKey(item.createdAt);
+  const target = /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim())
+    ? String(value).trim()
+    : localDateKey(value);
+  if (!itemDate || !target) return false;
+  if (operator === '>=') return itemDate >= target;
+  if (operator === '<=') return itemDate <= target;
+  if (operator === '>') return itemDate > target;
+  if (operator === '<') return itemDate < target;
+  return itemDate === target;
+}
+
+function matchesFieldTerm(item, field, value) {
+  const labels = labelsForItem(item).map((label) => label.name);
+  if (field === 'label' || field === 'labels') return labels.some((label) => matchText(label, value));
+  if (field === 'status' || field === 'processing') return matchesStatus(item, value);
+  if (field === 'watch') return matchText(item.watchState, value);
+  if (field === 'created' || field === 'added') return matchesCreated(item, value);
+  if (field === 'title') return matchText(item.title, value);
+  if (field === 'channel') return matchText(item.channel, value);
+  if (field === 'source') return matchText(item.source, value);
+  return matchText(itemSearchText(item), `${field}:${value}`);
+}
+
+function matchesFilterTerm(item, token) {
+  const comparison = token.match(/^(created|added)(>=|<=|>|<)(.+)$/i);
+  if (comparison) return matchesCreatedComparison(item, comparison[2], comparison[3]);
+  const fieldMatch = token.match(/^([a-z][a-z0-9_-]*):(.+)$/i);
+  if (fieldMatch) return matchesFieldTerm(item, fieldMatch[1].toLowerCase(), fieldMatch[2]);
+  return matchText(itemSearchText(item), token);
+}
+
+function matchesFilterQuery(item, query) {
+  const tokens = tokenizeFilterQuery(normalizeQuery(query));
+  if (!tokens.length) return true;
+  const groups = [[]];
+  let negateNext = false;
+  for (const token of tokens) {
+    if (/^or$/i.test(token)) {
+      groups.push([]);
+      negateNext = false;
+      continue;
+    }
+    if (/^(and)$/i.test(token)) continue;
+    if (/^not$/i.test(token)) {
+      negateNext = true;
+      continue;
+    }
+    const negated = negateNext || token.startsWith('-');
+    const value = token.startsWith('-') ? token.slice(1) : token;
+    if (value) groups.at(-1).push({ value, negated });
+    negateNext = false;
+  }
+  return groups.some((group) => group.length && group.every((term) => {
+    const matched = matchesFilterTerm(item, term.value);
+    return term.negated ? !matched : matched;
+  }));
+}
+
+function syncActiveViewToQuery() {
+  const query = normalizeQuery(state.filterQuery);
+  const matched = allViews().find((view) => normalizeQuery(view.query) === query);
+  state.activeViewId = matched?.id || '';
+}
+
+function selectFirstVisibleIfNeeded() {
+  const visible = filteredQueue();
+  if (!visible.some((item) => item.id === state.currentId)) {
+    state.currentId = visible[0]?.id || '';
+  }
 }
 
 function escapeHtml(value) {
@@ -166,10 +279,6 @@ function safeLabelColor(color) {
 function labelPillStyle(label) {
   const color = safeLabelColor(label.color);
   return `style="color:${color};border-color:${color}66;background:${color}14"`;
-}
-
-function labelDotStyle(label) {
-  return `style="background:${safeLabelColor(label.color)}"`;
 }
 
 function labelById(labelId) {
@@ -483,38 +592,24 @@ async function copyText(text) {
 }
 
 function renderFilters() {
-  const baseFilters = filters.map((filter) => {
-    const count = state.queue.filter((item) => matchesFilter(item, filter.id) && matchesLabelFilter(item)).length;
-    const active = filter.id === state.activeFilter ? ' active' : '';
-    return `<button class="filter-chip${active}" data-filter="${filter.id}">${escapeHtml(filter.label)} <span>${count}</span></button>`;
+  syncActiveViewToQuery();
+  els.filterRow.innerHTML = allViews().map((view) => {
+    const count = state.queue.filter((item) => matchesFilterQuery(item, view.query)).length;
+    const active = view.id === state.activeViewId ? ' active' : '';
+    return `<button class="filter-chip${active}" data-view-id="${escapeHtml(view.id)}">${escapeHtml(view.name)} <span>${count}</span></button>`;
   }).join('');
-  const labelFilters = state.labels.map((label) => {
-    const count = state.queue.filter((item) => matchesFilter(item, state.activeFilter) && (item.labelIds || []).includes(label.id)).length;
-    const active = label.id === state.activeLabelId ? ' active' : '';
-    return `<button class="filter-chip label-filter${active}" data-label-filter="${escapeHtml(label.id)}">
-      <span class="label-dot" ${labelDotStyle(label)}></span>${escapeHtml(label.name)} <span>${count}</span>
-    </button>`;
-  }).join('');
-  els.filterRow.innerHTML = `${baseFilters}${labelFilters}`;
-  document.querySelectorAll('[data-filter]').forEach((button) => {
+  if (document.activeElement !== els.filterQuery) {
+    els.filterQuery.value = state.filterQuery;
+  }
+  els.deleteFilterView.disabled = !state.activeViewId.startsWith('custom:');
+  document.querySelectorAll('[data-view-id]').forEach((button) => {
     button.addEventListener('click', () => {
       saveCurrentPlaybackPosition();
-      state.activeFilter = button.dataset.filter;
-      const visible = filteredQueue();
-      if (visible.length && !visible.some((item) => item.id === state.currentId)) {
-        state.currentId = visible[0].id;
-      }
-      render();
-    });
-  });
-  document.querySelectorAll('[data-label-filter]').forEach((button) => {
-    button.addEventListener('click', () => {
-      saveCurrentPlaybackPosition();
-      state.activeLabelId = state.activeLabelId === button.dataset.labelFilter ? '' : button.dataset.labelFilter;
-      const visible = filteredQueue();
-      if (visible.length && !visible.some((item) => item.id === state.currentId)) {
-        state.currentId = visible[0].id;
-      }
+      const view = allViews().find((entry) => entry.id === button.dataset.viewId);
+      if (!view) return;
+      state.activeViewId = view.id;
+      state.filterQuery = view.query;
+      selectFirstVisibleIfNeeded();
       render();
     });
   });
@@ -953,17 +1048,13 @@ async function refresh() {
     ...health,
     queue: queue.queue,
     labels: queue.labels || [],
+    filterViews: queue.filterViews || [],
     jobs: queue.jobs,
     playlists: queue.playlistSubscriptions || [],
     removedVideos: queue.removedVideos || [],
   };
-  if (state.activeLabelId && !state.labels.some((label) => label.id === state.activeLabelId)) {
-    state.activeLabelId = '';
-  }
-  const visible = filteredQueue();
-  if (!state.currentId || !visible.some((item) => item.id === state.currentId)) {
-    state.currentId = visible[0]?.id || '';
-  }
+  syncActiveViewToQuery();
+  selectFirstVisibleIfNeeded();
   if (!state.actions.some((action) => action.id === state.selectedAction)) {
     state.selectedAction = state.actions[0]?.id || '';
   }
@@ -1004,6 +1095,45 @@ async function importPlaylist() {
 
 async function refreshPlaylist(playlistId) {
   await api(`/api/playlists/${encodeURIComponent(playlistId)}/refresh`, { method: 'POST' });
+  await refresh();
+}
+
+async function saveCurrentFilterView() {
+  const query = normalizeQuery(state.filterQuery);
+  if (!query) {
+    alert('Set a filter query before saving a view.');
+    return;
+  }
+  const existing = state.activeViewId.startsWith('custom:')
+    ? state.filterViews.find((view) => `custom:${view.id}` === state.activeViewId)
+    : null;
+  const name = window.prompt('View name', existing?.name || '');
+  if (!name?.trim()) return;
+  if (existing) {
+    await api(`/api/filter-views/${encodeURIComponent(existing.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name, query }),
+    });
+  } else {
+    const result = await api('/api/filter-views', {
+      method: 'POST',
+      body: JSON.stringify({ name, query }),
+    });
+    state.activeViewId = `custom:${result.view.id}`;
+  }
+  await refresh();
+}
+
+async function deleteCurrentFilterView() {
+  if (!state.activeViewId.startsWith('custom:')) return;
+  const viewId = state.activeViewId.replace(/^custom:/, '');
+  const view = state.filterViews.find((entry) => entry.id === viewId);
+  if (!view) return;
+  const confirmed = window.confirm(`Delete saved view "${view.name}"?`);
+  if (!confirmed) return;
+  await api(`/api/filter-views/${encodeURIComponent(view.id)}`, { method: 'DELETE' });
+  state.activeViewId = 'builtin:today';
+  state.filterQuery = 'created:today';
   await refresh();
 }
 
@@ -1057,7 +1187,6 @@ async function deleteLabel(labelId) {
   const confirmed = window.confirm(`Delete label "${label.name}"?\n\nIt will be removed from every video.`);
   if (!confirmed) return;
   await api(`/api/labels/${encodeURIComponent(labelId)}`, { method: 'DELETE' });
-  if (state.activeLabelId === labelId) state.activeLabelId = '';
   await refresh();
 }
 
@@ -1167,6 +1296,20 @@ els.videoUrl.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') addVideo().catch((err) => alert(err.message));
 });
 els.mockPlaylist.addEventListener('click', () => importPlaylist().catch((err) => alert(err.message)));
+els.filterQuery.addEventListener('input', () => {
+  state.filterQuery = els.filterQuery.value;
+  syncActiveViewToQuery();
+  selectFirstVisibleIfNeeded();
+  render();
+});
+els.filterQuery.addEventListener('keydown', (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key === 's') {
+    event.preventDefault();
+    saveCurrentFilterView().catch((err) => alert(err.message));
+  }
+});
+els.saveFilterView.addEventListener('click', () => saveCurrentFilterView().catch((err) => alert(err.message)));
+els.deleteFilterView.addEventListener('click', () => deleteCurrentFilterView().catch((err) => alert(err.message)));
 els.addLabel.addEventListener('click', () => createLabel().catch((err) => alert(err.message)));
 els.labelName.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') createLabel().catch((err) => alert(err.message));

@@ -116,6 +116,7 @@ async function loadState() {
   state.removedVideos ||= [];
   state.playlistSubscriptions ||= [];
   state.labels ||= [];
+  state.filterViews ||= [];
   for (const item of state.queue) {
     item.labelIds ||= [];
   }
@@ -302,6 +303,23 @@ function labelsForItem(item) {
 function formatLabels(item) {
   const names = labelsForItem(item).map((label) => label.name);
   return names.length ? names.join(', ') : 'none';
+}
+
+function normalizeFilterViewName(name) {
+  return String(name || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeFilterViewQuery(query) {
+  return String(query || '').trim().replace(/\s+/g, ' ');
+}
+
+function filterViewNameKey(name) {
+  return normalizeFilterViewName(name).toLowerCase();
+}
+
+function findFilterViewByName(name, ignoreId = '') {
+  const key = filterViewNameKey(name);
+  return state.filterViews.find((view) => filterViewNameKey(view.name) === key && view.id !== ignoreId);
 }
 
 function parseYoutube(input) {
@@ -1077,10 +1095,66 @@ async function handleApi(req, res, pathname) {
     sendJson(res, 200, {
       queue: state.queue,
       labels: state.labels,
+      filterViews: state.filterViews,
       jobs: state.jobs,
       playlistSubscriptions: state.playlistSubscriptions,
       removedVideos: state.removedVideos,
     });
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/filter-views') {
+    const body = await readJson(req);
+    const view = await withStateMutation('create filter view', async () => {
+      const name = normalizeFilterViewName(body.name);
+      const query = normalizeFilterViewQuery(body.query);
+      if (!name) throw new Error('Filter view name is required');
+      if (!query) throw new Error('Filter query is required');
+      if (findFilterViewByName(name)) throw new Error(`Filter view already exists: ${name}`);
+      const next = {
+        id: makeId('view'),
+        name,
+        query,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+      state.filterViews.push(next);
+      return next;
+    });
+    sendJson(res, 201, { view });
+    return;
+  }
+  const filterViewMatch = pathname.match(/^\/api\/filter-views\/([^/]+)$/);
+  if (req.method === 'PATCH' && filterViewMatch) {
+    const body = await readJson(req);
+    const view = await withStateMutation('patch filter view', async () => {
+      const current = state.filterViews.find((entry) => entry.id === filterViewMatch[1]);
+      if (!current) throw new Error('Filter view not found');
+      if (Object.hasOwn(body, 'name')) {
+        const name = normalizeFilterViewName(body.name);
+        if (!name) throw new Error('Filter view name is required');
+        if (findFilterViewByName(name, current.id)) throw new Error(`Filter view already exists: ${name}`);
+        current.name = name;
+      }
+      if (Object.hasOwn(body, 'query')) {
+        const query = normalizeFilterViewQuery(body.query);
+        if (!query) throw new Error('Filter query is required');
+        current.query = query;
+      }
+      current.updatedAt = nowIso();
+      return current;
+    });
+    sendJson(res, 200, { view });
+    return;
+  }
+  if (req.method === 'DELETE' && filterViewMatch) {
+    const viewId = filterViewMatch[1];
+    const result = await withStateMutation('delete filter view', async () => {
+      const index = state.filterViews.findIndex((entry) => entry.id === viewId);
+      if (index < 0) throw new Error('Filter view not found');
+      const [removed] = state.filterViews.splice(index, 1);
+      return { removed };
+    });
+    sendJson(res, 200, result);
     return;
   }
   if (req.method === 'POST' && pathname === '/api/labels') {

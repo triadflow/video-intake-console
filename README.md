@@ -143,6 +143,12 @@ Labels keep shared definitions:
 - color
 - created/updated timestamps
 
+Filter views keep saved queue queries:
+
+- name
+- query
+- created/updated timestamps
+
 Jobs keep:
 
 - action name
@@ -177,6 +183,20 @@ The "Focus skill on timestamps" setting is explicit and per-video. When enabled,
 ## Labels
 
 Labels are custom local definitions stored in `state.labels`. Queue items store label associations as `labelIds`, so a label can be renamed or recolored without editing every video. The review UI supports creating, editing, deleting, applying, and filtering by labels, and skill prompts include the current label names as part of the video context.
+
+## Queue Filters
+
+The queue uses a GitHub-style filter query instead of rendering every label as a filter chip. Built-in views include `Today`, `Needs decision`, and `All`. Custom views are saved in `state.filterViews` and can be reused from the queue header.
+
+Supported query examples:
+
+```text
+created:today
+status:decision
+label:agents status:unprocessed
+label:agents OR label:enterprise
+-label:markets created>=2026-04-01
+```
 
 ## Persistence And Local-Service Assumptions
 
