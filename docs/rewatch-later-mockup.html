@@ -1,0 +1,1377 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rewatch Later Mockup</title>
+  <script src="../vendor/lucide.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101114;
+      --panel: #181a1f;
+      --panel-2: #22252c;
+      --ink: #f4f5f7;
+      --muted: #a8adb7;
+      --muted-2: #7f8794;
+      --line: #2e333d;
+      --line-strong: #444b59;
+      --red: #e33d3d;
+      --red-dark: #a91f28;
+      --green: #2fbf80;
+      --amber: #f1a940;
+      --blue: #51a7f9;
+      --violet: #a78bfa;
+      --teal: #35c2bd;
+      --shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+      --radius: 8px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 62px;
+      padding: 12px 22px;
+      background: rgba(16, 17, 20, 0.92);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(16px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: var(--red);
+      box-shadow: 0 10px 28px rgba(227, 61, 61, 0.28);
+      flex: 0 0 auto;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tab {
+      min-height: 34px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 12px;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid transparent;
+      font-size: 13px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .tab.active {
+      color: #fff;
+      background: #262a33;
+      border-color: var(--line-strong);
+    }
+
+    .tab svg,
+    .icon-btn svg,
+    .primary-btn svg,
+    .secondary-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .operator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 4px rgba(47, 191, 128, 0.12);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      min-height: calc(100vh - 62px);
+    }
+
+    .rail {
+      border-right: 1px solid var(--line);
+      background: #13151a;
+      padding: 18px;
+      overflow: auto;
+      max-height: calc(100vh - 62px);
+    }
+
+    .rail-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    h2,
+    h3 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .count {
+      min-height: 22px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 0 8px;
+      color: #dfe4ec;
+      background: #242832;
+      border: 1px solid var(--line);
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+      margin-bottom: 14px;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .search-shell {
+      position: relative;
+    }
+
+    .search-shell svg {
+      position: absolute;
+      left: 11px;
+      top: 50%;
+      width: 16px;
+      height: 16px;
+      transform: translateY(-50%);
+      color: var(--muted-2);
+      pointer-events: none;
+    }
+
+    input,
+    select {
+      width: 100%;
+      min-height: 38px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: #0f1115;
+      color: var(--ink);
+      outline: none;
+    }
+
+    input {
+      padding: 0 10px 0 34px;
+    }
+
+    select {
+      padding: 0 10px;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: rgba(81, 167, 249, 0.82);
+      box-shadow: 0 0 0 3px rgba(81, 167, 249, 0.14);
+    }
+
+    .segment {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0f1115;
+      margin-bottom: 16px;
+    }
+
+    .segment button {
+      min-height: 30px;
+      border-radius: 6px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .segment button.active {
+      background: #2a303a;
+      color: #fff;
+      box-shadow: inset 0 0 0 1px var(--line-strong);
+    }
+
+    .tag-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .tag-filter {
+      width: 100%;
+      min-height: 36px;
+      border-radius: 7px;
+      display: grid;
+      grid-template-columns: 14px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 0 9px;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid transparent;
+      text-align: left;
+      font-size: 13px;
+      font-weight: 780;
+    }
+
+    .tag-filter:hover,
+    .tag-filter.active {
+      background: #1d2027;
+      border-color: var(--line);
+      color: var(--ink);
+    }
+
+    .tag-color {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+    }
+
+    .tag-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tag-filter[data-color="red"] .tag-color { color: var(--red); }
+    .tag-filter[data-color="blue"] .tag-color { color: var(--blue); }
+    .tag-filter[data-color="green"] .tag-color { color: var(--green); }
+    .tag-filter[data-color="amber"] .tag-color { color: var(--amber); }
+    .tag-filter[data-color="violet"] .tag-color { color: var(--violet); }
+    .tag-filter[data-color="teal"] .tag-color { color: var(--teal); }
+
+    .tag-filter.active[data-color="red"] { border-color: rgba(227, 61, 61, 0.38); }
+    .tag-filter.active[data-color="blue"] { border-color: rgba(81, 167, 249, 0.42); }
+    .tag-filter.active[data-color="green"] { border-color: rgba(47, 191, 128, 0.38); }
+    .tag-filter.active[data-color="amber"] { border-color: rgba(241, 169, 64, 0.4); }
+    .tag-filter.active[data-color="violet"] { border-color: rgba(167, 139, 250, 0.42); }
+    .tag-filter.active[data-color="teal"] { border-color: rgba(53, 194, 189, 0.42); }
+
+    .content {
+      min-width: 0;
+      overflow: auto;
+      max-height: calc(100vh - 62px);
+    }
+
+    .screen-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: end;
+      padding: 28px 28px 16px;
+    }
+
+    .title-stack {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .eyebrow svg {
+      width: 15px;
+      height: 15px;
+      color: var(--red);
+    }
+
+    .screen-head h3 {
+      font-size: clamp(28px, 5vw, 56px);
+      line-height: 0.96;
+      font-weight: 900;
+      max-width: 900px;
+    }
+
+    .stats {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .stat {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: 999px;
+      padding: 0 12px;
+      color: #dce2ea;
+      background: #1d2027;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .stat svg {
+      width: 15px;
+      height: 15px;
+      color: var(--muted);
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 28px;
+      background: rgba(16, 17, 20, 0.86);
+      backdrop-filter: blur(14px);
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .active-tags {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .active-tags::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tag-chip,
+    .label-chip {
+      min-height: 24px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 9px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.08);
+      color: #e7ebf2;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .tag-chip button {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      background: transparent;
+      color: currentColor;
+    }
+
+    .tag-chip button:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .view-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-btn,
+    .secondary-btn,
+    .primary-btn {
+      min-height: 38px;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      white-space: nowrap;
+      font-weight: 820;
+    }
+
+    .icon-btn {
+      width: 38px;
+      color: var(--ink);
+      background: #252933;
+      border: 1px solid var(--line);
+    }
+
+    .icon-btn:hover,
+    .secondary-btn:hover {
+      background: #303641;
+      border-color: var(--line-strong);
+    }
+
+    .secondary-btn {
+      color: var(--ink);
+      background: #252933;
+      border: 1px solid var(--line);
+      padding: 0 12px;
+      font-size: 13px;
+    }
+
+    .primary-btn {
+      color: #fff;
+      background: var(--red);
+      padding: 0 13px;
+      font-size: 13px;
+      box-shadow: 0 12px 30px rgba(227, 61, 61, 0.24);
+    }
+
+    .primary-btn:hover {
+      background: #c82731;
+    }
+
+    .shelf {
+      padding: 22px 28px 42px;
+    }
+
+    .shelf-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .shelf-title h2 {
+      color: #dfe4eb;
+      font-size: 15px;
+      text-transform: none;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .spotlight-card {
+      position: relative;
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 8px 26px rgba(0, 0, 0, 0.26);
+      transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+    }
+
+    .spotlight-card:hover,
+    .spotlight-card:focus-within {
+      transform: translateY(-4px);
+      border-color: rgba(255, 255, 255, 0.22);
+      box-shadow: var(--shadow);
+    }
+
+    .thumb {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      background: #0c0e12;
+      overflow: hidden;
+    }
+
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transform: scale(1.01);
+      transition: transform 180ms ease, filter 180ms ease;
+    }
+
+    .spotlight-card:hover .thumb img {
+      transform: scale(1.045);
+      filter: saturate(1.08);
+    }
+
+    .scrim {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(to top, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.44) 44%, rgba(0, 0, 0, 0.05) 76%),
+        linear-gradient(to right, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.02) 58%);
+      pointer-events: none;
+    }
+
+    .thumb-actions {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      gap: 7px;
+      z-index: 2;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: opacity 130ms ease, transform 130ms ease;
+    }
+
+    .spotlight-card:hover .thumb-actions,
+    .spotlight-card:focus-within .thumb-actions {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .thumb-actions .icon-btn {
+      width: 34px;
+      min-height: 34px;
+      background: rgba(16, 17, 20, 0.72);
+      border-color: rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(6px);
+    }
+
+    .thumb-meta {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      z-index: 2;
+      display: grid;
+      gap: 8px;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .video-title {
+      margin: 0;
+      color: white;
+      font-size: 20px;
+      line-height: 1.12;
+      font-weight: 900;
+      letter-spacing: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .duration {
+      flex: 0 0 auto;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 5px;
+      padding: 3px 7px;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .progress {
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.22);
+      overflow: hidden;
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      width: var(--progress, 0%);
+      border-radius: inherit;
+      background: var(--red);
+    }
+
+    .card-body {
+      display: grid;
+      gap: 12px;
+      padding: 13px;
+    }
+
+    .video-meta {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .video-meta span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .meta-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--line-strong);
+      flex: 0 0 auto;
+    }
+
+    .reason {
+      min-height: 40px;
+      color: #d9dee6;
+      font-size: 13px;
+      line-height: 1.38;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .label-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      min-height: 24px;
+    }
+
+    .label-chip.red { color: #ffb4b4; border-color: rgba(227, 61, 61, 0.34); background: rgba(227, 61, 61, 0.12); }
+    .label-chip.blue { color: #b9dbff; border-color: rgba(81, 167, 249, 0.34); background: rgba(81, 167, 249, 0.12); }
+    .label-chip.green { color: #b9f1d7; border-color: rgba(47, 191, 128, 0.32); background: rgba(47, 191, 128, 0.11); }
+    .label-chip.amber { color: #ffdda2; border-color: rgba(241, 169, 64, 0.34); background: rgba(241, 169, 64, 0.12); }
+    .label-chip.violet { color: #d8cbff; border-color: rgba(167, 139, 250, 0.36); background: rgba(167, 139, 250, 0.13); }
+    .label-chip.teal { color: #b8f3f0; border-color: rgba(53, 194, 189, 0.34); background: rgba(53, 194, 189, 0.12); }
+
+    .card-actions {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .empty-state {
+      min-height: 320px;
+      display: none;
+      place-items: center;
+      padding: 36px 18px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed var(--line-strong);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .empty-state.visible {
+      display: grid;
+    }
+
+    .empty-state svg {
+      width: 38px;
+      height: 38px;
+      margin-bottom: 12px;
+      color: var(--muted-2);
+    }
+
+    .mini-queue {
+      display: grid;
+      gap: 9px;
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .mini-item {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr);
+      gap: 9px;
+      align-items: center;
+      min-height: 54px;
+      border-radius: 7px;
+      padding: 6px;
+      background: #181b22;
+      border: 1px solid transparent;
+    }
+
+    .mini-item.active {
+      border-color: rgba(227, 61, 61, 0.44);
+      background: rgba(227, 61, 61, 0.1);
+    }
+
+    .mini-thumb {
+      aspect-ratio: 16 / 9;
+      border-radius: 5px;
+      overflow: hidden;
+      background: #0f1115;
+    }
+
+    .mini-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .mini-title {
+      min-width: 0;
+      color: #e7ebf2;
+      font-size: 12px;
+      line-height: 1.25;
+      font-weight: 780;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    @media (max-width: 1180px) {
+      .workspace {
+        grid-template-columns: 240px minmax(0, 1fr);
+      }
+
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .screen-head {
+        grid-template-columns: 1fr;
+      }
+
+      .stats {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 820px) {
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+      }
+
+      .topbar > * {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+      }
+
+      .operator {
+        justify-content: flex-start;
+      }
+
+      .tabs {
+        min-width: 0;
+      }
+
+      .tab {
+        flex: 0 0 auto;
+      }
+
+      .workspace {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+      }
+
+      .rail,
+      .content {
+        max-height: none;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+
+      .rail {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .tag-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .mini-queue {
+        display: none;
+      }
+
+      .toolbar {
+        position: static;
+        grid-template-columns: 1fr;
+      }
+
+      .view-actions {
+        overflow-x: auto;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .screen-head,
+      .toolbar,
+      .shelf {
+        padding-left: 18px;
+        padding-right: 18px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      body {
+        overflow-x: hidden;
+      }
+
+      .tag-list {
+        grid-template-columns: 1fr;
+      }
+
+      .screen-head h3 {
+        font-size: 34px;
+      }
+
+      .video-title {
+        font-size: 17px;
+      }
+
+      .card-actions {
+        grid-template-columns: 1fr 38px 38px;
+      }
+
+      .secondary-btn span,
+      .primary-btn span {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><i data-lucide="clapperboard"></i></div>
+        <h1>Video Intake Console</h1>
+      </div>
+      <nav class="tabs" aria-label="Console tabs">
+        <button class="tab" type="button"><i data-lucide="inbox"></i>Queue</button>
+        <button class="tab" type="button"><i data-lucide="play-square"></i>Watch</button>
+        <button class="tab active" type="button"><i data-lucide="bookmark"></i>Rewatch Later</button>
+        <button class="tab" type="button"><i data-lucide="history"></i>Runs</button>
+      </nav>
+      <div class="operator">
+        <span class="status-dot"></span>
+        <span>Local store</span>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="rail">
+        <div class="rail-head">
+          <h2>Filters</h2>
+          <span class="count" id="savedCount">0 saved</span>
+        </div>
+
+        <div class="field">
+          <label for="searchInput">Search</label>
+          <div class="search-shell">
+            <i data-lucide="search"></i>
+            <input id="searchInput" type="search" placeholder="Title, channel, note">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="sortSelect">Sort</label>
+          <select id="sortSelect">
+            <option value="recent">Recently added</option>
+            <option value="progress">Progress</option>
+            <option value="duration">Duration</option>
+            <option value="title">Title</option>
+          </select>
+        </div>
+
+        <div class="segment" role="group" aria-label="Watch state">
+          <button class="active" type="button" data-watch-state="all">All</button>
+          <button type="button" data-watch-state="open">Open</button>
+          <button type="button" data-watch-state="done">Done</button>
+        </div>
+
+        <div class="rail-head">
+          <h2>Tags</h2>
+          <button class="icon-btn" id="clearTags" type="button" title="Clear selected tags" aria-label="Clear selected tags">
+            <i data-lucide="rotate-ccw"></i>
+          </button>
+        </div>
+        <div class="tag-list" id="tagList"></div>
+
+        <div class="mini-queue" id="miniQueue"></div>
+      </aside>
+
+      <main class="content">
+        <section class="screen-head">
+          <div class="title-stack">
+            <div class="eyebrow"><i data-lucide="sparkles"></i>Rewatch Later</div>
+            <h3>Spotlight shelf for videos worth a second pass</h3>
+          </div>
+          <div class="stats">
+            <span class="stat"><i data-lucide="bookmark-check"></i><span id="visibleCount">0 shown</span></span>
+            <span class="stat"><i data-lucide="clock-3"></i><span>9h 42m queued</span></span>
+            <span class="stat"><i data-lucide="tags"></i><span id="activeTagCount">All tags</span></span>
+          </div>
+        </section>
+
+        <div class="toolbar">
+          <div class="active-tags" id="activeTags"></div>
+          <div class="view-actions">
+            <button class="secondary-btn" type="button" title="Compact view">
+              <i data-lucide="list"></i>
+              <span>Compact</span>
+            </button>
+            <button class="secondary-btn" type="button" title="Shuffle shelf">
+              <i data-lucide="shuffle"></i>
+              <span>Shuffle</span>
+            </button>
+            <button class="primary-btn" type="button" title="Add current video to rewatch later">
+              <i data-lucide="bookmark-plus"></i>
+              <span>Add current</span>
+            </button>
+          </div>
+        </div>
+
+        <section class="shelf">
+          <div class="shelf-title">
+            <h2>Spotlight Grid</h2>
+            <span class="count" id="gridCount">0 cards</span>
+          </div>
+          <div class="grid" id="videoGrid"></div>
+          <div class="empty-state" id="emptyState">
+            <div>
+              <i data-lucide="search-x"></i>
+              <div>No videos match this view.</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const tags = [
+      { id: 'agents', name: 'Agents', color: 'blue' },
+      { id: 'hardware', name: 'Hardware', color: 'amber' },
+      { id: 'workflow', name: 'Workflow', color: 'green' },
+      { id: 'market', name: 'Market', color: 'violet' },
+      { id: 'research', name: 'Research', color: 'teal' },
+      { id: 'urgent', name: 'Urgent', color: 'red' },
+    ];
+
+    const videos = [
+      {
+        id: 'v1',
+        title: 'Building a Reliable Local Agent Loop',
+        channel: 'Field Systems Lab',
+        duration: '41:18',
+        durationSeconds: 2478,
+        added: 'Today',
+        progress: 64,
+        state: 'open',
+        thumb: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+        tags: ['agents', 'workflow', 'research'],
+        note: 'Strong section on failure recovery and turning rough observations into durable operator procedures.'
+      },
+      {
+        id: 'v2',
+        title: 'Automatic Chessboard Gantry: Magnet Carriage Test',
+        channel: 'Workshop Notes',
+        duration: '27:04',
+        durationSeconds: 1624,
+        added: 'Yesterday',
+        progress: 18,
+        state: 'open',
+        thumb: 'https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg',
+        tags: ['hardware', 'research', 'urgent'],
+        note: 'Useful close-up shots of belt tension, carriage clearance, and the failure mode during fast diagonal moves.'
+      },
+      {
+        id: 'v3',
+        title: 'AI Product Teams After the First Prototype',
+        channel: 'Operator Brief',
+        duration: '58:44',
+        durationSeconds: 3524,
+        added: 'Jun 20',
+        progress: 83,
+        state: 'open',
+        thumb: 'https://i.ytimg.com/vi/ysz5S6PUM-U/hqdefault.jpg',
+        tags: ['agents', 'market', 'workflow'],
+        note: 'The middle third frames a clean distinction between demo value and real repeated-use value.'
+      },
+      {
+        id: 'v4',
+        title: 'Tiny Bench Fixtures for Repeatable Sensor Alignment',
+        channel: 'Machine Room',
+        duration: '33:22',
+        durationSeconds: 2002,
+        added: 'Jun 18',
+        progress: 0,
+        state: 'open',
+        thumb: 'https://i.ytimg.com/vi/ScMzIvxBSi4/hqdefault.jpg',
+        tags: ['hardware', 'workflow'],
+        note: 'Promising layout ideas for low-cost calibration fixtures and operator-visible setup references.'
+      },
+      {
+        id: 'v5',
+        title: 'From Watch Notes to Living Source Graphs',
+        channel: 'Archive Methods',
+        duration: '1:12:09',
+        durationSeconds: 4329,
+        added: 'Jun 15',
+        progress: 100,
+        state: 'done',
+        thumb: 'https://i.ytimg.com/vi/aqz-KE-bpKQ/hqdefault.jpg',
+        tags: ['research', 'workflow'],
+        note: 'Worth replaying before changing the intake notes schema because the examples map cleanly to source triage.'
+      },
+      {
+        id: 'v6',
+        title: 'Market Map: Local Automation Tools',
+        channel: 'Founder Desk',
+        duration: '49:03',
+        durationSeconds: 2943,
+        added: 'Jun 12',
+        progress: 42,
+        state: 'open',
+        thumb: 'https://i.ytimg.com/vi/oHg5SJYRHA0/hqdefault.jpg',
+        tags: ['market', 'agents'],
+        note: 'Good competitor vocabulary and a few concrete buyer pains to compare against the console roadmap.'
+      },
+      {
+        id: 'v7',
+        title: 'Design Review: Service Access Under Real Constraints',
+        channel: 'Prototype Review',
+        duration: '36:50',
+        durationSeconds: 2210,
+        added: 'Jun 9',
+        progress: 7,
+        state: 'open',
+        thumb: 'https://i.ytimg.com/vi/tgbNymZ7vqY/hqdefault.jpg',
+        tags: ['hardware', 'research'],
+        note: 'Several practical examples of leaving fastener and cable access visible in early concept drawings.'
+      },
+      {
+        id: 'v8',
+        title: 'Queue Design Patterns for Human-in-the-Loop Work',
+        channel: 'Interface Shelf',
+        duration: '44:21',
+        durationSeconds: 2661,
+        added: 'Jun 7',
+        progress: 100,
+        state: 'done',
+        thumb: 'https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg',
+        tags: ['workflow', 'research', 'urgent'],
+        note: 'The filtering model feels close to the current label query design and may reduce dashboard sprawl.'
+      },
+      {
+        id: 'v9',
+        title: 'Tactical Notes on Parser Evaluation',
+        channel: 'Data Shop',
+        duration: '24:36',
+        durationSeconds: 1476,
+        added: 'Jun 2',
+        progress: 29,
+        state: 'open',
+        thumb: 'https://i.ytimg.com/vi/L_jWHffIx5E/hqdefault.jpg',
+        tags: ['agents', 'research'],
+        note: 'Short, dense examples of separating fixture overfit from meaningful production parser behavior.'
+      }
+    ];
+
+    const selectedTags = new Set();
+    let watchState = 'all';
+
+    const els = {
+      tagList: document.getElementById('tagList'),
+      videoGrid: document.getElementById('videoGrid'),
+      searchInput: document.getElementById('searchInput'),
+      sortSelect: document.getElementById('sortSelect'),
+      clearTags: document.getElementById('clearTags'),
+      activeTags: document.getElementById('activeTags'),
+      savedCount: document.getElementById('savedCount'),
+      visibleCount: document.getElementById('visibleCount'),
+      activeTagCount: document.getElementById('activeTagCount'),
+      gridCount: document.getElementById('gridCount'),
+      emptyState: document.getElementById('emptyState'),
+      miniQueue: document.getElementById('miniQueue'),
+    };
+
+    function tagById(id) {
+      return tags.find((tag) => tag.id === id);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function matchesVideo(video) {
+      const query = els.searchInput.value.trim().toLowerCase();
+      const text = [video.title, video.channel, video.note, video.tags.map((tag) => tagById(tag)?.name).join(' ')].join(' ').toLowerCase();
+      if (query && !text.includes(query)) return false;
+      if (watchState !== 'all' && video.state !== watchState) return false;
+      return [...selectedTags].every((tag) => video.tags.includes(tag));
+    }
+
+    function sortVideos(items) {
+      const mode = els.sortSelect.value;
+      return [...items].sort((a, b) => {
+        if (mode === 'progress') return b.progress - a.progress;
+        if (mode === 'duration') return b.durationSeconds - a.durationSeconds;
+        if (mode === 'title') return a.title.localeCompare(b.title);
+        return videos.indexOf(a) - videos.indexOf(b);
+      });
+    }
+
+    function renderTags() {
+      els.tagList.innerHTML = tags.map((tag) => {
+        const count = videos.filter((video) => video.tags.includes(tag.id)).length;
+        const active = selectedTags.has(tag.id) ? ' active' : '';
+        return `
+          <button class="tag-filter${active}" type="button" data-tag="${escapeHtml(tag.id)}" data-color="${escapeHtml(tag.color)}">
+            <span class="tag-color"></span>
+            <span class="tag-name">${escapeHtml(tag.name)}</span>
+            <span class="count">${count}</span>
+          </button>`;
+      }).join('');
+      document.querySelectorAll('.tag-filter').forEach((button) => {
+        button.addEventListener('click', () => {
+          const tag = button.dataset.tag;
+          if (selectedTags.has(tag)) selectedTags.delete(tag);
+          else selectedTags.add(tag);
+          render();
+        });
+      });
+    }
+
+    function renderActiveTags() {
+      if (!selectedTags.size) {
+        els.activeTags.innerHTML = '<span class="count">All saved videos</span>';
+        return;
+      }
+      els.activeTags.innerHTML = [...selectedTags].map((tagId) => {
+        const tag = tagById(tagId);
+        return `
+          <span class="tag-chip">
+            ${escapeHtml(tag?.name || tagId)}
+            <button type="button" data-remove-tag="${escapeHtml(tagId)}" title="Remove tag" aria-label="Remove ${escapeHtml(tag?.name || tagId)}">
+              <i data-lucide="x"></i>
+            </button>
+          </span>`;
+      }).join('');
+      document.querySelectorAll('[data-remove-tag]').forEach((button) => {
+        button.addEventListener('click', () => {
+          selectedTags.delete(button.dataset.removeTag);
+          render();
+        });
+      });
+    }
+
+    function renderGrid() {
+      const visible = sortVideos(videos.filter(matchesVideo));
+      els.videoGrid.innerHTML = visible.map((video) => `
+        <article class="spotlight-card">
+          <div class="thumb">
+            <img src="${escapeHtml(video.thumb)}" alt="">
+            <span class="scrim"></span>
+            <div class="thumb-actions">
+              <button class="icon-btn" type="button" title="Open source video" aria-label="Open source video">
+                <i data-lucide="external-link"></i>
+              </button>
+              <button class="icon-btn" type="button" title="Remove from rewatch later" aria-label="Remove from rewatch later">
+                <i data-lucide="bookmark-minus"></i>
+              </button>
+            </div>
+            <div class="thumb-meta">
+              <div class="title-row">
+                <h3 class="video-title">${escapeHtml(video.title)}</h3>
+                <span class="duration">${escapeHtml(video.duration)}</span>
+              </div>
+              <div class="progress" style="--progress:${video.progress}%"><span></span></div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="video-meta">
+              <span>${escapeHtml(video.channel)}</span>
+              <span class="meta-dot"></span>
+              <span>${escapeHtml(video.added)}</span>
+              <span class="meta-dot"></span>
+              <span>${video.progress === 100 ? 'watched' : `${video.progress}% watched`}</span>
+            </div>
+            <div class="reason">${escapeHtml(video.note)}</div>
+            <div class="label-row">
+              ${video.tags.map((tagId) => {
+                const tag = tagById(tagId);
+                return `<span class="label-chip ${escapeHtml(tag?.color || '')}">${escapeHtml(tag?.name || tagId)}</span>`;
+              }).join('')}
+            </div>
+            <div class="card-actions">
+              <button class="primary-btn" type="button" title="Resume video">
+                <i data-lucide="${video.progress === 100 ? 'rotate-ccw' : 'play'}"></i>
+                <span>${video.progress === 100 ? 'Replay' : 'Resume'}</span>
+              </button>
+              <button class="icon-btn" type="button" title="Copy context" aria-label="Copy context">
+                <i data-lucide="copy"></i>
+              </button>
+              <button class="icon-btn" type="button" title="Send to skill action" aria-label="Send to skill action">
+                <i data-lucide="send"></i>
+              </button>
+            </div>
+          </div>
+        </article>
+      `).join('');
+      els.emptyState.classList.toggle('visible', visible.length === 0);
+      els.savedCount.textContent = `${videos.length} saved`;
+      els.visibleCount.textContent = `${visible.length} shown`;
+      els.gridCount.textContent = `${visible.length} cards`;
+      els.activeTagCount.textContent = selectedTags.size ? `${selectedTags.size} active` : 'All tags';
+      renderMiniQueue(visible);
+    }
+
+    function renderMiniQueue(visible) {
+      const source = visible.length ? visible : videos.slice(0, 5);
+      els.miniQueue.innerHTML = source.slice(0, 5).map((video, index) => `
+        <div class="mini-item ${index === 0 ? 'active' : ''}">
+          <div class="mini-thumb"><img src="${escapeHtml(video.thumb)}" alt=""></div>
+          <div class="mini-title">${escapeHtml(video.title)}</div>
+        </div>
+      `).join('');
+    }
+
+    function render() {
+      renderTags();
+      renderActiveTags();
+      renderGrid();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    document.querySelectorAll('[data-watch-state]').forEach((button) => {
+      button.addEventListener('click', () => {
+        watchState = button.dataset.watchState;
+        document.querySelectorAll('[data-watch-state]').forEach((entry) => {
+          entry.classList.toggle('active', entry === button);
+        });
+        renderGrid();
+        if (window.lucide) lucide.createIcons();
+      });
+    });
+
+    els.searchInput.addEventListener('input', renderGrid);
+    els.sortSelect.addEventListener('change', renderGrid);
+    els.clearTags.addEventListener('click', () => {
+      selectedTags.clear();
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

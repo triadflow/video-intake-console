@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Queue Card Mockups</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --panel-2: #f0f3f6;
+      --ink: #171b20;
+      --muted: #66717f;
+      --line: #d9dee5;
+      --line-strong: #bdc6d1;
+      --blue: #1d6fd8;
+      --blue-dark: #124f9c;
+      --green: #178558;
+      --amber: #a86405;
+      --red: #c43d32;
+      --violet: #6c4ed9;
+      --radius: 10px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      padding: 36px 28px 80px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 28px;
+    }
+
+    h1 {
+      font-size: 22px;
+      margin: 0 0 6px;
+      letter-spacing: -0.01em;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .columns {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 24px;
+      margin-top: 28px;
+    }
+
+    @media (max-width: 1024px) {
+      .columns { grid-template-columns: 1fr; }
+    }
+
+    .col h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 0 0 4px;
+      font-weight: 600;
+    }
+
+    .col p {
+      margin: 0 0 16px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Shared pill */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 18px;
+      padding: 0 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--panel-2);
+      color: var(--ink);
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    .pill.blue { background: rgba(29, 111, 216, 0.12); color: var(--blue-dark); }
+    .pill.green { background: rgba(23, 133, 88, 0.14); color: var(--green); }
+    .pill.amber { background: rgba(168, 100, 5, 0.14); color: var(--amber); }
+    .pill.red { background: rgba(196, 61, 50, 0.13); color: var(--red); }
+    .pill.violet { background: rgba(108, 78, 217, 0.14); color: var(--violet); }
+    .pill.ghost { background: transparent; color: var(--muted); padding: 0; }
+
+    .pill .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* Icon buttons */
+    .icon-btn {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      display: inline-grid;
+      place-items: center;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+    }
+    .icon-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+    .icon-btn.danger:hover { color: var(--red); border-color: rgba(196, 61, 50, 0.5); background: rgba(196, 61, 50, 0.06); }
+    .icon-btn i { width: 15px; height: 15px; }
+
+    /* ============================================
+       MOCKUP 1 — Editorial
+       Generous whitespace, single-line meta,
+       title-led hierarchy. Actions tucked top-right.
+       ============================================ */
+    .m1 {
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 132px 1fr;
+      gap: 14px;
+      transition: border-color 140ms ease, box-shadow 140ms ease;
+    }
+    .m1:hover { border-color: var(--line-strong); box-shadow: 0 6px 18px rgba(23,27,32,0.05); }
+    .m1.active { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(29,111,216,0.12); }
+
+    .m1 .thumb {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      border-radius: 8px;
+      overflow: hidden;
+      background: linear-gradient(135deg, #e4e9ef, #cdd5df);
+    }
+    .m1 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .m1 .duration {
+      position: absolute;
+      right: 6px;
+      bottom: 6px;
+      background: rgba(12,15,19,0.82);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .m1 .progress {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 3px;
+      background: rgba(255,255,255,0.25);
+    }
+    .m1 .progress span {
+      display: block;
+      height: 100%;
+      background: var(--red);
+    }
+
+    .m1 .body {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-right: 70px;
+    }
+    .m1 .kicker {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .m1 .title {
+      font-size: 14.5px;
+      font-weight: 600;
+      line-height: 1.35;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .m1 .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 2px;
+    }
+    .m1 .actions {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+    .m1:hover .actions, .m1:focus-within .actions { opacity: 1; }
+    .m1.active .actions { opacity: 1; }
+
+    /* ============================================
+       MOCKUP 2 — Cinematic
+       Thumbnail-led, info layered on the thumb,
+       compact body. Status bar at the leading edge.
+       ============================================ */
+    .m2 {
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 168px 1fr;
+      transition: border-color 140ms ease, box-shadow 140ms ease;
+    }
+    .m2:hover { border-color: var(--line-strong); box-shadow: 0 6px 18px rgba(23,27,32,0.05); }
+    .m2.active { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(29,111,216,0.12); }
+
+    .m2 .status-rail {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: var(--line);
+    }
+    .m2.active .status-rail { background: var(--blue); }
+    .m2 .status-rail.green { background: var(--green); }
+    .m2 .status-rail.amber { background: var(--amber); }
+
+    .m2 .thumb {
+      position: relative;
+      align-self: stretch;
+      min-height: 100%;
+      background: linear-gradient(135deg, #e4e9ef, #cdd5df);
+    }
+    .m2 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; position: absolute; inset: 0; }
+
+    .m2 .scrim {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 45%);
+      pointer-events: none;
+    }
+    .m2 .duration {
+      position: absolute;
+      right: 7px;
+      bottom: 7px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+      letter-spacing: 0.02em;
+    }
+    .m2 .source {
+      position: absolute;
+      top: 7px;
+      left: 7px;
+      background: rgba(12,15,19,0.78);
+      backdrop-filter: blur(4px);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 7px;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .m2 .overlay-actions {
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+    .m2:hover .overlay-actions { opacity: 1; }
+    .m2 .overlay-actions .icon-btn {
+      background: rgba(12,15,19,0.65);
+      border-color: transparent;
+      color: #fff;
+      width: 26px;
+      height: 26px;
+    }
+    .m2 .overlay-actions .icon-btn:hover { background: rgba(12,15,19,0.85); }
+    .m2 .overlay-actions .icon-btn.danger:hover { background: var(--red); color: #fff; }
+    .m2 .progress {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 3px;
+      background: rgba(255,255,255,0.2);
+    }
+    .m2 .progress span { display: block; height: 100%; background: var(--red); }
+
+    .m2 .body {
+      min-width: 0;
+      padding: 12px 14px 12px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+    }
+    .m2 .title {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.35;
+      color: var(--ink);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .m2 .meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .m2 .meta .sep {
+      width: 3px; height: 3px; border-radius: 50%;
+      background: var(--line-strong);
+    }
+    .m2 .labels {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    /* ============================================
+       MOCKUP 3 — Quiet List
+       Dense, low-chrome, designed to scan vertically.
+       Status as a leading dot. Actions reveal on hover.
+       ============================================ */
+    .m3 {
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 9px 14px 9px 9px;
+      display: grid;
+      grid-template-columns: 96px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      transition: border-color 140ms ease, background 140ms ease;
+    }
+    .m3:hover { border-color: var(--line-strong); background: #fbfcfd; }
+    .m3.active {
+      border-color: var(--blue);
+      background: rgba(29,111,216,0.04);
+      box-shadow: 0 0 0 2px rgba(29,111,216,0.1);
+    }
+
+    .m3 .thumb {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      border-radius: 6px;
+      overflow: hidden;
+      background: linear-gradient(135deg, #e4e9ef, #cdd5df);
+    }
+    .m3 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .m3 .duration {
+      position: absolute;
+      right: 4px; bottom: 4px;
+      background: rgba(12,15,19,0.82);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    .m3 .body {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .m3 .head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .m3 .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .m3 .status-dot.blue { background: var(--blue); box-shadow: 0 0 0 3px rgba(29,111,216,0.15); }
+    .m3 .status-dot.green { background: var(--green); box-shadow: 0 0 0 3px rgba(23,133,88,0.15); }
+    .m3 .status-dot.amber { background: var(--amber); box-shadow: 0 0 0 3px rgba(168,100,5,0.15); }
+    .m3 .status-dot.muted { background: var(--line-strong); }
+
+    .m3 .title {
+      font-size: 13.5px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .m3 .meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+    .m3 .meta .sep {
+      width: 2px; height: 2px; border-radius: 50%;
+      background: var(--line-strong);
+    }
+
+    .m3 .actions {
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+    .m3:hover .actions, .m3.active .actions { opacity: 1; }
+    .m3 .icon-btn { width: 26px; height: 26px; }
+
+    .m3 .labels-inline {
+      display: inline-flex;
+      gap: 4px;
+      margin-left: 4px;
+    }
+    .m3 .label-chip {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>Queue Card — 3 Composition Studies</h1>
+      <div class="sub">Same data, three different rhythms. Each shows: default · active · hover state.</div>
+    </header>
+
+    <div class="columns">
+      <!-- ============================ COL 1: Editorial ============================ -->
+      <section class="col">
+        <h2>1 · Editorial</h2>
+        <p>Generous padding, title-led, single row of pills. Actions hide until hover and live in the top-right of the card — never collide with thumb.</p>
+        <div class="stack">
+
+          <article class="m1">
+            <div class="thumb">
+              <img src="https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg" alt="">
+              <span class="duration">12:04</span>
+              <div class="progress"><span style="width: 42%"></span></div>
+            </div>
+            <div class="body">
+              <span class="kicker">YouTube · The Daily</span>
+              <span class="title">How the Fed's new interest-rate stance is rippling through housing markets</span>
+              <div class="meta">
+                <span class="pill blue"><span class="dot"></span>watching</span>
+                <span class="pill green">transcribed</span>
+                <span class="pill">resume 5:08</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="icon-btn" title="Copy"><i data-lucide="copy"></i></button>
+              <button class="icon-btn danger" title="Remove"><i data-lucide="trash-2"></i></button>
+            </div>
+          </article>
+
+          <article class="m1 active">
+            <div class="thumb">
+              <img src="https://i.ytimg.com/vi/9bZkp7q19f0/mqdefault.jpg" alt="">
+              <span class="duration">28:51</span>
+            </div>
+            <div class="body">
+              <span class="kicker">Upload · 2026-05-22</span>
+              <span class="title">Interview: founder discusses pivot from B2C to enterprise tooling</span>
+              <div class="meta">
+                <span class="pill blue"><span class="dot"></span>current</span>
+                <span class="pill amber">processing</span>
+                <span class="pill">research</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="icon-btn" title="Copy"><i data-lucide="copy"></i></button>
+              <button class="icon-btn danger" title="Remove"><i data-lucide="trash-2"></i></button>
+            </div>
+          </article>
+
+          <article class="m1">
+            <div class="thumb">
+              <img src="https://i.ytimg.com/vi/kJQP7kiw5Fk/mqdefault.jpg" alt="">
+              <span class="duration">04:22</span>
+            </div>
+            <div class="body">
+              <span class="kicker">Manual</span>
+              <span class="title">Short clip — quick note for later review</span>
+              <div class="meta">
+                <span class="pill">queued</span>
+                <span class="pill ghost">no transcript</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="icon-btn" title="Copy"><i data-lucide="copy"></i></button>
+              <button class="icon-btn danger" title="Remove"><i data-lucide="trash-2"></i></button>
+            </div>
+          </article>
+
+        </div>
+      </section>
+
+      <!-- ============================ COL 2: Cinematic ============================ -->
+      <section class="col">
+        <h2>2 · Cinematic</h2>
+        <p>Bigger thumbnail dominates. Source label + actions float on the image. A leading status rail replaces the noisy state pill — color tells the story.</p>
+        <div class="stack">
+
+          <article class="m2">
+            <div class="status-rail green"></div>
+            <div class="thumb">
+              <img src="https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg" alt="">
+              <div class="scrim"></div>
+              <span class="source">YouTube</span>
+              <div class="overlay-actions">
+                <button class="icon-btn" title="Copy"><i data-lucide="copy"></i></button>
+                <button class="icon-btn danger" title="Remove"><i data-lucide="trash-2"></i></button>
+              </div>
+              <span class="duration">12:04</span>
+              <div class="progress"><span style="width: 42%"></span></div>
+            </div>
+            <div class="body">
+              <div class="title">How the Fed's new interest-rate stance is rippling through housing markets</div>
+              <div class="meta">
+                <span>The Daily</span>
+                <span class="sep"></span>
+                <span>resume 5:08</span>
+              </div>
+              <div class="labels">
+                <span class="pill">research</span>
+                <span class="pill violet">economics</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="m2 active">
+            <div class="status-rail"></div>
+            <div class="thumb">
+              <img src="https://i.ytimg.com/vi/9bZkp7q19f0/mqdefault.jpg" alt="">
+              <div class="scrim"></div>
+              <span class="source">Upload</span>
+              <div class="overlay-actions">
+                <button class="icon-btn" title="Copy"><i data-lucide="copy"></i></button>
+                <button class="icon-btn danger" title="Remove"><i data-lucide="trash-2"></i></button>
+              </div>
+              <span class="duration">28:51</span>
+            </div>
+            <div class="body">
+              <div class="title">Interview: founder discusses pivot from B2C to enterprise tooling</div>
+              <div class="meta">
+                <span>2026-05-22</span>
+                <span class="sep"></span>
+                <span>processing</span>
+              </div>
+              <div class="labels">
+                <span class="pill">research</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="m2">
+            <div class="status-rail amber"></div>
+            <div class="thumb">
+              <img src="https://i.ytimg.com/vi/kJQP7kiw5Fk/mqdefault.jpg" alt="">
+              <div class="scrim"></div>
+              <span class="source">Manual</span>
+              <div class="overlay-actions">
+                <button class="icon-btn" title="Copy"><i data-lucide="copy"></i></button>
+                <button class="icon-btn danger" title="Remove"><i data-lucide="trash-2"></i></button>
+              </div>
+              <span class="duration">04:22</span>
+            </div>
+            <div class="body">
+              <div class="title">Short clip — quick note for later review</div>
+              <div class="meta">
+                <span>queued</span>
+                <span class="sep"></span>
+                <span>no transcript</span>
+              </div>
+            </div>
+          </article>
+
+        </div>
+      </section>
+
+      <!-- ============================ COL 3: Quiet List ============================ -->
+      <section class="col">
+        <h2>3 · Quiet List</h2>
+        <p>Designed for scanning. Smaller thumb, title on one line, status reduced to a single colored dot, labels as tiny color chips. Best when the queue is long.</p>
+        <div class="stack">
+
+          <article class="m3">
+            <div class="thumb">
+              <img src="https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg" alt="">
+              <span class="duration">12:04</span>
+            </div>
+            <div class="body">
+              <div class="head">
+                <span class="status-dot green" title="transcribed"></span>
+                <span class="title">How the Fed's new interest-rate stance is rippling through housing markets</span>
+                <span class="labels-inline">
+                  <span class="label-chip" style="background: var(--blue)"></span>
+                  <span class="label-chip" style="background: var(--violet)"></span>
+                </span>
+              </div>
+              <div class="meta">
+                <span>The Daily</span>
+                <span class="sep"></span>
+                <span>YouTube</span>
+                <span class="sep"></span>
+                <span>resume 5:08</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="icon-btn" title="Copy"><i data-lucide="copy"></i></button>
+              <button class="icon-btn danger" title="Remove"><i data-lucide="trash-2"></i></button>
+            </div>
+          </article>
+
+          <article class="m3 active">
+            <div class="thumb">
+              <img src="https://i.ytimg.com/vi/9bZkp7q19f0/mqdefault.jpg" alt="">
+              <span class="duration">28:51</span>
+            </div>
+            <div class="body">
+              <div class="head">
+                <span class="status-dot blue" title="current"></span>
+                <span class="title">Interview: founder discusses pivot from B2C to enterprise tooling</span>
+                <span class="labels-inline">
+                  <span class="label-chip" style="background: var(--blue)"></span>
+                </span>
+              </div>
+              <div class="meta">
+                <span>Upload</span>
+                <span class="sep"></span>
+                <span>2026-05-22</span>
+                <span class="sep"></span>
+                <span>processing</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="icon-btn" title="Copy"><i data-lucide="copy"></i></button>
+              <button class="icon-btn danger" title="Remove"><i data-lucide="trash-2"></i></button>
+            </div>
+          </article>
+
+          <article class="m3">
+            <div class="thumb">
+              <img src="https://i.ytimg.com/vi/kJQP7kiw5Fk/mqdefault.jpg" alt="">
+              <span class="duration">04:22</span>
+            </div>
+            <div class="body">
+              <div class="head">
+                <span class="status-dot muted" title="queued"></span>
+                <span class="title">Short clip — quick note for later review</span>
+              </div>
+              <div class="meta">
+                <span>Manual</span>
+                <span class="sep"></span>
+                <span>queued</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="icon-btn" title="Copy"><i data-lucide="copy"></i></button>
+              <button class="icon-btn danger" title="Remove"><i data-lucide="trash-2"></i></button>
+            </div>
+          </article>
+
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>
