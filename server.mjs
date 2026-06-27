@@ -117,8 +117,11 @@ async function loadState() {
   state.playlistSubscriptions ||= [];
   state.labels ||= [];
   state.filterViews ||= [];
+  if (typeof state.activeFilterQuery !== 'string') state.activeFilterQuery = 'created:today';
   for (const item of state.queue) {
     item.labelIds ||= [];
+    item.rewatchLater = Boolean(item.rewatchLater);
+    item.rewatchSavedAt = item.rewatchLater ? String(item.rewatchSavedAt || item.updatedAt || item.createdAt || nowIso()) : '';
   }
   return state;
 }
@@ -457,6 +460,8 @@ function itemFromVideo({ parsed, metadata, source }) {
     reviewOutcome: '',
     notes: '',
     labelIds: [],
+    rewatchLater: false,
+    rewatchSavedAt: '',
     timestampRanges: mergeTimestampRanges(parsed.timestampRanges, extractTimestampRanges(metadata.description, 'description')),
     timestampFocus: false,
     playbackPosition: {
@@ -549,9 +554,25 @@ function upsertPlaylistSubscription({ playlistId, url, title }) {
   return subscription;
 }
 
+// YouTube caps anonymous playlist pagination at ~100-200 entries
+// (yt-dlp/yt-dlp#12759); authenticated requests return the full list.
+const YTDLP_COOKIES_BROWSER = process.env.VIDEO_INTAKE_YTDLP_COOKIES_BROWSER || 'chrome';
+
+async function fetchPlaylistInfo(url) {
+  const baseArgs = ['--flat-playlist', '--dump-single-json', url];
+  if (YTDLP_COOKIES_BROWSER && YTDLP_COOKIES_BROWSER !== 'none') {
+    try {
+      return await runJsonCommand('yt-dlp', ['--cookies-from-browser', YTDLP_COOKIES_BROWSER, ...baseArgs], 120_000);
+    } catch (err) {
+      console.warn(`playlist fetch with ${YTDLP_COOKIES_BROWSER} cookies failed, retrying anonymously (may truncate long playlists): ${String(err.message || err).split('\n')[0]}`);
+    }
+  }
+  return runJsonCommand('yt-dlp', baseArgs, 90_000);
+}
+
 async function refreshPlaylistSubscription(subscription, { save = true } = {}) {
   if (!commandAvailable('yt-dlp')) throw new Error('yt-dlp is required for playlist refresh and is not available on PATH');
-  const info = await runJsonCommand('yt-dlp', ['--flat-playlist', '--dump-single-json', subscription.url], 90_000);
+  const info = await fetchPlaylistInfo(subscription.url);
   return withStateMutation('refresh playlist', async () => {
     const current = state.playlistSubscriptions.find((entry) => entry.id === subscription.id || entry.playlistId === subscription.playlistId) || subscription;
     const parsed = parseYoutube(current.url);
@@ -1096,10 +1117,20 @@ async function handleApi(req, res, pathname) {
       queue: state.queue,
       labels: state.labels,
       filterViews: state.filterViews,
+      activeFilterQuery: state.activeFilterQuery,
       jobs: state.jobs,
       playlistSubscriptions: state.playlistSubscriptions,
       removedVideos: state.removedVideos,
     });
+    return;
+  }
+  if (req.method === 'PUT' && pathname === '/api/active-filter') {
+    const body = await readJson(req);
+    const next = typeof body?.query === 'string' ? body.query : '';
+    await withStateMutation('persist active filter', async () => {
+      state.activeFilterQuery = next;
+    });
+    sendJson(res, 200, { activeFilterQuery: state.activeFilterQuery });
     return;
   }
   if (req.method === 'POST' && pathname === '/api/filter-views') {
@@ -1310,6 +1341,14 @@ async function handleApi(req, res, pathname) {
       if (!current) throw new Error('Queue item not found');
       for (const key of ['watchState', 'processingState', 'notes', 'reviewOutcome', 'playbackPosition', 'description', 'timestampFocus']) {
         if (Object.hasOwn(body, key)) current[key] = body[key];
+      }
+      if (Object.hasOwn(body, 'rewatchLater')) {
+        current.rewatchLater = Boolean(body.rewatchLater);
+        current.rewatchSavedAt = current.rewatchLater
+          ? String(body.rewatchSavedAt || current.rewatchSavedAt || nowIso())
+          : '';
+      } else if (Object.hasOwn(body, 'rewatchSavedAt')) {
+        current.rewatchSavedAt = current.rewatchLater ? String(body.rewatchSavedAt || current.rewatchSavedAt || nowIso()) : '';
       }
       if (Object.hasOwn(body, 'labelIds')) current.labelIds = normalizeLabelIds(body.labelIds);
       if (Object.hasOwn(body, 'timestampRanges')) current.timestampRanges = normalizeTimestampRanges(body.timestampRanges);

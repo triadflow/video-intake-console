@@ -17,8 +17,13 @@ let state = {
   warnings: [],
   claudeAvailable: false,
   ytDlpAvailable: false,
+  activeAppView: 'queue',
   filterQuery: 'created:today',
   activeViewId: 'builtin:today',
+  rewatchSearch: '',
+  rewatchSort: 'saved',
+  rewatchWatch: 'all',
+  rewatchLabelIds: [],
   labelManagerOpen: false,
   currentId: '',
   selectedAction: 'transcribe',
@@ -31,6 +36,9 @@ let timestampSaveInFlight = Promise.resolve();
 
 const els = {
   topStatus: document.querySelector('.top-status span:last-child'),
+  queueView: document.getElementById('queueView'),
+  rewatchView: document.getElementById('rewatchView'),
+  rewatchTabCount: document.getElementById('rewatchTabCount'),
   queueList: document.getElementById('queueList'),
   playlistList: document.getElementById('playlistList'),
   queueCount: document.getElementById('queueCount'),
@@ -68,6 +76,21 @@ const els = {
   mockPlaylist: document.getElementById('mockPlaylist'),
   runSkill: document.getElementById('runSkill'),
   removeItem: document.getElementById('removeItem'),
+  toggleRewatch: document.getElementById('toggleRewatch'),
+  rewatchSavedCount: document.getElementById('rewatchSavedCount'),
+  rewatchSearch: document.getElementById('rewatchSearch'),
+  rewatchSort: document.getElementById('rewatchSort'),
+  rewatchClearLabels: document.getElementById('rewatchClearLabels'),
+  rewatchTagList: document.getElementById('rewatchTagList'),
+  rewatchVisibleCount: document.getElementById('rewatchVisibleCount'),
+  rewatchDurationTotal: document.getElementById('rewatchDurationTotal'),
+  rewatchActiveLabelCount: document.getElementById('rewatchActiveLabelCount'),
+  rewatchActiveTags: document.getElementById('rewatchActiveTags'),
+  rewatchClearSearch: document.getElementById('rewatchClearSearch'),
+  rewatchAddCurrent: document.getElementById('rewatchAddCurrent'),
+  rewatchGridCount: document.getElementById('rewatchGridCount'),
+  rewatchGrid: document.getElementById('rewatchGrid'),
+  rewatchEmpty: document.getElementById('rewatchEmpty'),
 };
 
 const playbackSaveMs = 5000;
@@ -81,18 +104,30 @@ let renderedVideoKey = '';
 let playbackTimer = null;
 let playbackSaveInFlight = Promise.resolve();
 const descriptionFetches = new Map();
+let clientMutationVersion = 0;
+let clientMutationsInFlight = 0;
 
 async function api(path, options = {}) {
-  const res = await fetch(path, {
-    ...options,
-    headers: {
-      'content-type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Request failed: ${res.status}`);
-  return body;
+  const method = String(options.method || 'GET').toUpperCase();
+  const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+  if (mutating) {
+    clientMutationVersion += 1;
+    clientMutationsInFlight += 1;
+  }
+  try {
+    const res = await fetch(path, {
+      ...options,
+      headers: {
+        'content-type': 'application/json',
+        ...(options.headers || {}),
+      },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Request failed: ${res.status}`);
+    return body;
+  } finally {
+    if (mutating) clientMutationsInFlight = Math.max(0, clientMutationsInFlight - 1);
+  }
 }
 
 function currentItem() {
@@ -106,6 +141,59 @@ function selectedAction() {
 
 function filteredQueue() {
   return state.queue.filter((item) => matchesFilterQuery(item, state.filterQuery));
+}
+
+function rewatchItems() {
+  return state.queue.filter((item) => item.rewatchLater);
+}
+
+function matchesRewatchSearch(item) {
+  const query = String(state.rewatchSearch || '').trim().toLowerCase();
+  if (!query) return true;
+  const text = [
+    item.title,
+    item.channel,
+    item.source,
+    item.notes,
+    labelsForItem(item).map((label) => label.name).join(' '),
+  ].filter(Boolean).join(' ').toLowerCase();
+  return text.includes(query);
+}
+
+function rewatchItemDone(item) {
+  return item?.watchState === 'watched' || Boolean(item?.playbackPosition?.completed);
+}
+
+function matchesRewatchWatchState(item) {
+  if (state.rewatchWatch === 'done') return rewatchItemDone(item);
+  if (state.rewatchWatch === 'open') return !rewatchItemDone(item);
+  return true;
+}
+
+function matchesRewatchLabels(item) {
+  const selected = new Set(state.rewatchLabelIds || []);
+  if (!selected.size) return true;
+  const itemLabels = new Set(item.labelIds || []);
+  return [...selected].every((labelId) => itemLabels.has(labelId));
+}
+
+function filteredRewatchItems() {
+  const visible = rewatchItems().filter((item) => (
+    matchesRewatchSearch(item)
+    && matchesRewatchWatchState(item)
+    && matchesRewatchLabels(item)
+  ));
+  return sortRewatchItems(visible);
+}
+
+function sortRewatchItems(items) {
+  const mode = state.rewatchSort || 'saved';
+  return [...items].sort((a, b) => {
+    if (mode === 'progress') return playbackProgressPercent(b) - playbackProgressPercent(a);
+    if (mode === 'duration') return (Number(b.duration) || 0) - (Number(a.duration) || 0);
+    if (mode === 'title') return String(a.title || '').localeCompare(String(b.title || ''));
+    return Date.parse(b.rewatchSavedAt || b.updatedAt || b.createdAt || '') - Date.parse(a.rewatchSavedAt || a.updatedAt || a.createdAt || '');
+  });
 }
 
 function isAddedToday(item) {
@@ -134,6 +222,14 @@ function allViews() {
 
 function normalizeQuery(query) {
   return String(query || '').trim().replace(/\s+/g, ' ');
+}
+
+let persistFilterTimer = null;
+function persistActiveFilter(query) {
+  clearTimeout(persistFilterTimer);
+  persistFilterTimer = setTimeout(() => {
+    api('/api/active-filter', { method: 'PUT', body: JSON.stringify({ query: String(query || '') }) }).catch(() => {});
+  }, 350);
 }
 
 function tokenizeFilterQuery(query) {
@@ -339,6 +435,54 @@ function resumeSecondsFor(item) {
   return Math.max(0, Math.floor(seconds));
 }
 
+function playbackProgressPercent(item) {
+  const position = playbackPosition(item);
+  const duration = Number(position?.duration || item?.duration) || 0;
+  if (position?.completed) return 100;
+  if (!duration) return 0;
+  const seconds = Math.max(0, Number(position?.seconds) || 0);
+  return Math.max(0, Math.min(100, (seconds / duration) * 100));
+}
+
+function thumbnailCandidatesForItem(item) {
+  const candidates = [];
+  if (item?.thumbnail) candidates.push(item.thumbnail);
+  if (item?.videoId) {
+    const id = encodeURIComponent(item.videoId);
+    candidates.push(
+      `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
+      `https://i.ytimg.com/vi/${id}/hq720.jpg`,
+      `https://i.ytimg.com/vi/${id}/sddefault.jpg`,
+      `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+    );
+  }
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+function thumbnailCandidateAttr(candidates) {
+  return escapeHtml(JSON.stringify(candidates));
+}
+
+function handleThumbnailError(img) {
+  let candidates = [];
+  try {
+    candidates = JSON.parse(img.dataset.thumbCandidates || '[]');
+  } catch {
+    candidates = [];
+  }
+  const nextIndex = Number(img.dataset.thumbIndex || 0) + 1;
+  if (nextIndex < candidates.length) {
+    img.dataset.thumbIndex = String(nextIndex);
+    img.src = candidates[nextIndex];
+    return;
+  }
+  img.style.display = 'none';
+  img.closest('.thumb, .rewatch-thumb')?.classList.add('thumb-missing');
+}
+
+window.handleThumbnailError = handleThumbnailError;
+
 function playbackPayload(item, seconds, duration, completed = false) {
   const safeDuration = Number.isFinite(duration) && duration > 0
     ? duration
@@ -360,6 +504,20 @@ function formatDuration(seconds) {
   const secs = total % 60;
   if (hours) return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatDurationCompact(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function formatShortDate(value) {
+  const date = new Date(value || '');
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function parseTimestampValue(value) {
@@ -539,6 +697,8 @@ function buildQueueItemContext(item) {
     `- processingState: ${item.processingState || ''}`,
     `- reviewOutcome: ${item.reviewOutcome || ''}`,
     `- labels: ${labelsText(item)}`,
+    `- rewatchLater: ${item.rewatchLater ? 'yes' : 'no'}`,
+    item.rewatchSavedAt ? `- rewatchSavedAt: ${formatTimestamp(item.rewatchSavedAt)}` : '',
     `- playbackPosition: ${playbackLabel(item).replace('resume: ', '')}`,
     `- timestampFocus: ${item.timestampFocus ? 'yes' : 'no'}`,
     item.notes ? `- watchNotes: ${item.notes}` : '- watchNotes: none yet',
@@ -609,6 +769,7 @@ function renderFilters() {
       if (!view) return;
       state.activeViewId = view.id;
       state.filterQuery = view.query;
+      persistActiveFilter(state.filterQuery);
       selectFirstVisibleIfNeeded();
       render();
     });
@@ -620,41 +781,73 @@ function renderQueue() {
   els.queueCount.textContent = `${visible.length}/${state.queue.length} shown`;
   els.queueList.innerHTML = visible.map((item) => {
     const active = item.id === state.currentId ? ' active' : '';
-    const thumb = item.thumbnail || (item.videoId ? `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg` : '');
-    const durationBadge = item.duration ? `<span class="duration-badge">${escapeHtml(formatDuration(item.duration))}</span>` : '';
-    const sourceLabel = queueSourceLabel(item);
+    const thumbCandidates = thumbnailCandidatesForItem(item);
+    const thumb = thumbCandidates[0] || '';
+    const durationBadge = item.duration ? `<span class="thumb-duration">${escapeHtml(formatDuration(item.duration))}</span>` : '';
+    const sourceTag = String(item?.source || 'Manual').trim() || 'Manual';
+    const channel = String(item?.channel || '').trim();
     const resume = resumeSecondsFor(item);
-    const resumePill = item.playbackPosition
-      ? `<span class="pill">${resume > 0 ? `resume ${formatDuration(resume)}` : (item.playbackPosition.completed ? 'resume watched' : 'resume start')}</span>`
+    const resumeText = item.playbackPosition
+      ? (resume > 0 ? `resume ${formatDuration(resume)}` : (item.playbackPosition.completed ? 'resume watched' : 'resume start'))
+      : '';
+    const metaParts = [];
+    if (channel) metaParts.push(escapeHtml(channel));
+    metaParts.push(`<span class="meta-state">${escapeHtml(formatState(item.processingState))}</span>`);
+    if (resumeText) metaParts.push(escapeHtml(resumeText));
+    if (item.rewatchLater) metaParts.push('<span class="pill red">rewatch</span>');
+    const metaLine = metaParts.join('<span class="meta-sep"></span>');
+    const labelPills = renderLabelPills(item, { max: 2 });
+    const railClass = pillClassForProcessing(item.processingState);
+    const progressPct = playbackProgressPercent(item);
+    const progressBar = progressPct > 0
+      ? `<span class="thumb-progress"><span style="width:${progressPct.toFixed(1)}%"></span></span>`
       : '';
     return `
       <div class="queue-card${active}">
-        <button class="queue-item" data-id="${item.id}" type="button">
-          <span class="thumb-wrap">
-            <span class="thumb">${thumb ? `<img src="${escapeHtml(thumb)}" alt="">` : '<i class="thumb-fallback" data-lucide="video"></i>'}</span>
+        <div class="queue-item" data-id="${item.id}" role="button" tabindex="0">
+          <span class="status-rail ${railClass}"></span>
+          <span class="thumb">
+            ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-thumb-index="0" data-thumb-candidates="${thumbnailCandidateAttr(thumbCandidates)}" onerror="window.handleThumbnailError(this)"><i class="thumb-fallback" data-lucide="video"></i>` : '<i class="thumb-fallback" data-lucide="video"></i>'}
+            <span class="thumb-scrim"></span>
+            <span class="thumb-source">${escapeHtml(sourceTag)}</span>
             ${durationBadge}
-          </span>
-          <span class="item-text">
-            <span class="item-kicker">${escapeHtml(sourceLabel)}</span>
-            <span class="item-title">${escapeHtml(item.title)}</span>
-            <span class="item-meta">
-              <span class="pill blue">${escapeHtml(item.watchState)}</span>
-              <span class="pill ${pillClassForProcessing(item.processingState)}">${escapeHtml(formatState(item.processingState))}</span>
-              ${resumePill}
-              ${renderLabelPills(item)}
+            ${progressBar}
+            <span class="thumb-actions">
+              <button class="icon-btn queue-rewatch${item.rewatchLater ? ' active' : ''}" data-id="${item.id}" type="button" title="${item.rewatchLater ? 'Remove from Rewatch Later' : 'Save to Rewatch Later'}" aria-label="${item.rewatchLater ? 'Remove from Rewatch Later' : 'Save to Rewatch Later'}">
+                <i data-lucide="${item.rewatchLater ? 'bookmark-check' : 'bookmark'}"></i>
+              </button>
+              <button class="icon-btn queue-copy" data-id="${item.id}" type="button" title="Copy video context" aria-label="Copy video context">
+                <i data-lucide="copy"></i>
+              </button>
+              <button class="icon-btn queue-delete" data-id="${item.id}" type="button" title="Remove from queue" aria-label="Remove from queue">
+                <i data-lucide="trash-2"></i>
+              </button>
             </span>
           </span>
-        </button>
-        <button class="icon-btn queue-copy" data-id="${item.id}" type="button" title="Copy video context" aria-label="Copy video context">
-          <i data-lucide="copy"></i>
-        </button>
+          <span class="item-text">
+            <span class="item-title">${escapeHtml(item.title)}</span>
+            <span class="item-meta">
+              ${metaLine}
+              ${labelPills ? `<span class="meta-labels">${labelPills}</span>` : ''}
+            </span>
+          </span>
+        </div>
       </div>`;
   }).join('') || `
     <div class="empty">
       <div class="empty-inner"><i data-lucide="filter"></i><div>No videos match this filter.</div></div>
     </div>`;
   document.querySelectorAll('.queue-item').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', (event) => {
+      if (event.target.closest('.thumb-actions')) return;
+      saveCurrentPlaybackPosition();
+      state.currentId = button.dataset.id;
+      render();
+    });
+    button.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      if (event.target.closest('.thumb-actions')) return;
+      event.preventDefault();
       saveCurrentPlaybackPosition();
       state.currentId = button.dataset.id;
       render();
@@ -667,12 +860,41 @@ function renderQueue() {
       await copyText(buildQueueItemContext(item));
     });
   });
+  document.querySelectorAll('.queue-rewatch').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const item = state.queue.find((entry) => entry.id === button.dataset.id);
+      if (!item) return;
+      await setRewatchLater(item.id, !item.rewatchLater);
+    });
+  });
+  document.querySelectorAll('.queue-delete').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const id = button.dataset.id;
+      if (!id) return;
+      if (id === state.currentId) {
+        await saveCurrentPlaybackPosition();
+        await flushTimestamps();
+      }
+      await api(`/api/queue/${id}`, { method: 'DELETE' });
+      if (id === state.currentId) {
+        const visible = filteredQueue().filter((entry) => entry.id !== id);
+        state.currentId = visible[0]?.id || state.queue.find((entry) => entry.id !== id)?.id || '';
+      }
+      await refresh();
+    });
+  });
 }
 
+let playlistRefreshBusyId = '';
+let renderedPlaylistHtml = '';
+
 function renderPlaylists() {
-  els.playlistList.innerHTML = state.playlists.map((playlist) => {
+  const html = state.playlists.map((playlist) => {
     const stats = playlist.lastStats || {};
     const checked = playlist.lastCheckedAt ? new Date(playlist.lastCheckedAt).toLocaleString() : 'never';
+    const busy = playlist.id === playlistRefreshBusyId;
     return `
       <div class="playlist-item">
         <div class="playlist-top">
@@ -680,7 +902,7 @@ function renderPlaylists() {
             <div class="playlist-title">${escapeHtml(playlist.title || playlist.playlistId)}</div>
             <div class="item-meta">Last checked: ${escapeHtml(checked)}</div>
           </div>
-          <button class="icon-btn playlist-refresh" title="Refresh playlist" aria-label="Refresh playlist" data-playlist-id="${escapeHtml(playlist.id)}">
+          <button class="icon-btn playlist-refresh${busy ? ' spinning' : ''}"${busy ? ' disabled' : ''} title="Refresh playlist" aria-label="Refresh playlist" data-playlist-id="${escapeHtml(playlist.id)}">
             <i data-lucide="refresh-cw"></i>
           </button>
         </div>
@@ -692,9 +914,11 @@ function renderPlaylists() {
         </div>
       </div>`;
   }).join('');
-  document.querySelectorAll('.playlist-refresh').forEach((button) => {
-    button.addEventListener('click', () => refreshPlaylist(button.dataset.playlistId).catch((err) => alert(err.message)));
-  });
+  // Skip the rewrite when nothing changed so the auto-refresh interval
+  // doesn't replace the buttons mid-click.
+  if (html === renderedPlaylistHtml) return;
+  renderedPlaylistHtml = html;
+  els.playlistList.innerHTML = html;
 }
 
 function renderCurrent() {
@@ -706,6 +930,11 @@ function renderCurrent() {
     els.timestampText.value = '';
     els.timestampFocus.checked = false;
     els.timestampCount.textContent = '0 ranges';
+    els.toggleRewatch.disabled = true;
+    els.toggleRewatch.classList.remove('active');
+    els.toggleRewatch.title = 'Save to Rewatch Later';
+    els.toggleRewatch.setAttribute('aria-label', 'Save to Rewatch Later');
+    els.toggleRewatch.innerHTML = '<i data-lucide="bookmark"></i>';
     renderLabels(null);
     renderDescription(null);
     destroyYouTubePlayer();
@@ -719,6 +948,11 @@ function renderCurrent() {
   els.processingStatePill.textContent = `processing: ${formatState(item.processingState)}`;
   els.processingStatePill.className = `pill ${pillClassForProcessing(item.processingState)}`;
   els.resumeStatePill.textContent = playbackLabel(item);
+  els.toggleRewatch.disabled = false;
+  els.toggleRewatch.classList.toggle('active', Boolean(item.rewatchLater));
+  els.toggleRewatch.title = item.rewatchLater ? 'Remove from Rewatch Later' : 'Save to Rewatch Later';
+  els.toggleRewatch.setAttribute('aria-label', els.toggleRewatch.title);
+  els.toggleRewatch.innerHTML = `<i data-lucide="${item.rewatchLater ? 'bookmark-check' : 'bookmark'}"></i>`;
   renderLabels(item);
   renderDescription(item, shouldFetchDescription(item) ? 'Fetching description...' : '');
   if (document.activeElement !== els.timestampText) {
@@ -793,15 +1027,27 @@ function renderYouTubePlayer(item, force = false) {
     playerVars: {
       playsinline: 1,
       rel: 0,
+      cc_load_policy: 0,
+      iv_load_policy: 3,
       start,
     },
     events: {
       onReady: (event) => {
+        disableYouTubeCaptions(event.target);
         if (start > 0) event.target.seekTo(start, true);
       },
       onStateChange: handlePlayerStateChange,
     },
   });
+}
+
+function disableYouTubeCaptions(player) {
+  try {
+    player.unloadModule('captions');
+    player.unloadModule('cc');
+  } catch {
+    // The captions module may not be initialized for every embed.
+  }
 }
 
 function destroyYouTubePlayer() {
@@ -1022,6 +1268,163 @@ function renderClaudeSession(job) {
     </div>`;
 }
 
+function renderAppViews() {
+  els.queueView.hidden = state.activeAppView !== 'queue';
+  els.rewatchView.hidden = state.activeAppView !== 'rewatch';
+  document.querySelectorAll('[data-app-view]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.appView === state.activeAppView);
+  });
+}
+
+function rewatchTotalDuration(items) {
+  const total = items.reduce((sum, item) => sum + (Number(item.duration) || 0), 0);
+  return `${formatDurationCompact(total)} queued`;
+}
+
+function renderRewatchLabels() {
+  const saved = rewatchItems();
+  const counts = new Map();
+  for (const item of saved) {
+    for (const labelId of item.labelIds || []) counts.set(labelId, (counts.get(labelId) || 0) + 1);
+  }
+  els.rewatchTagList.innerHTML = state.labels.map((label) => {
+    const active = state.rewatchLabelIds.includes(label.id) ? ' active' : '';
+    const count = counts.get(label.id) || 0;
+    return `
+      <button class="rewatch-tag${active}" type="button" data-rewatch-label="${escapeHtml(label.id)}">
+        <span class="rewatch-tag-dot" style="color:${escapeHtml(safeLabelColor(label.color))}"></span>
+        <span class="rewatch-tag-name">${escapeHtml(label.name)}</span>
+        <span class="counter">${count}</span>
+      </button>`;
+  }).join('') || '<div class="empty-copy">Create labels on queue items to filter this shelf.</div>';
+  document.querySelectorAll('[data-rewatch-label]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const labelId = button.dataset.rewatchLabel;
+      const selected = new Set(state.rewatchLabelIds);
+      if (selected.has(labelId)) selected.delete(labelId);
+      else selected.add(labelId);
+      state.rewatchLabelIds = [...selected];
+      renderRewatch();
+    });
+  });
+}
+
+function renderRewatchActiveLabels() {
+  if (!state.rewatchLabelIds.length) {
+    els.rewatchActiveTags.innerHTML = '<span class="counter">All saved videos</span>';
+    return;
+  }
+  els.rewatchActiveTags.innerHTML = state.rewatchLabelIds.map((labelId) => {
+    const label = labelById(labelId);
+    return `
+      <span class="label-pill" ${label ? labelPillStyle(label) : ''}>
+        ${escapeHtml(label?.name || labelId)}
+        <button class="label-remove" type="button" data-remove-rewatch-label="${escapeHtml(labelId)}" title="Remove label filter" aria-label="Remove ${escapeHtml(label?.name || labelId)} filter">
+          <i data-lucide="x"></i>
+        </button>
+      </span>`;
+  }).join('');
+  document.querySelectorAll('[data-remove-rewatch-label]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.rewatchLabelIds = state.rewatchLabelIds.filter((id) => id !== button.dataset.removeRewatchLabel);
+      renderRewatch();
+    });
+  });
+}
+
+function renderRewatchGrid() {
+  const saved = rewatchItems();
+  const visible = filteredRewatchItems();
+  els.rewatchSavedCount.textContent = `${saved.length} saved`;
+  els.rewatchTabCount.textContent = String(saved.length);
+  els.rewatchVisibleCount.textContent = `${visible.length} shown`;
+  els.rewatchGridCount.textContent = `${visible.length} cards`;
+  els.rewatchDurationTotal.textContent = rewatchTotalDuration(saved);
+  els.rewatchActiveLabelCount.textContent = state.rewatchLabelIds.length ? `${state.rewatchLabelIds.length} active` : 'All labels';
+  els.rewatchAddCurrent.disabled = !currentItem();
+  if (document.activeElement !== els.rewatchSearch) els.rewatchSearch.value = state.rewatchSearch;
+  if (els.rewatchSort.value !== state.rewatchSort) els.rewatchSort.value = state.rewatchSort;
+
+  els.rewatchGrid.innerHTML = visible.map((item) => {
+    const thumbCandidates = thumbnailCandidatesForItem(item);
+    const thumb = thumbCandidates[0] || '';
+    const progress = playbackProgressPercent(item);
+    const note = String(item.notes || item.description || 'Saved for a second pass. Add watch notes to capture why this video matters.').trim();
+    const date = formatShortDate(item.rewatchSavedAt || item.updatedAt || item.createdAt);
+    const source = queueSourceLabel(item);
+    const labels = renderLabelPills(item, { max: 4 }) || '<span class="empty-copy">No labels</span>';
+    return `
+      <article class="rewatch-card" data-id="${escapeHtml(item.id)}">
+        <div class="rewatch-thumb">
+          ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-thumb-index="0" data-thumb-candidates="${thumbnailCandidateAttr(thumbCandidates)}" onerror="window.handleThumbnailError(this)"><i class="thumb-fallback" data-lucide="video"></i>` : '<i class="thumb-fallback" data-lucide="video"></i>'}
+          <span class="rewatch-scrim"></span>
+          <div class="rewatch-thumb-actions">
+            <button class="icon-btn rewatch-copy" data-id="${escapeHtml(item.id)}" type="button" title="Copy video context" aria-label="Copy video context">
+              <i data-lucide="copy"></i>
+            </button>
+            <button class="icon-btn rewatch-remove" data-id="${escapeHtml(item.id)}" type="button" title="Remove from Rewatch Later" aria-label="Remove from Rewatch Later">
+              <i data-lucide="bookmark-minus"></i>
+            </button>
+          </div>
+          <div class="rewatch-thumb-meta">
+            <div class="rewatch-title-row">
+              <h3 class="rewatch-title">${escapeHtml(item.title)}</h3>
+              ${item.duration ? `<span class="rewatch-duration">${escapeHtml(formatDuration(item.duration))}</span>` : ''}
+            </div>
+            <div class="rewatch-progress" style="--progress:${progress.toFixed(1)}%"><span></span></div>
+          </div>
+        </div>
+        <div class="rewatch-body">
+          <div class="rewatch-meta">
+            <span>${escapeHtml(source)}</span>
+            <span class="meta-sep"></span>
+            ${date ? `<span>saved ${escapeHtml(date)}</span><span class="meta-sep"></span>` : ''}
+            <span>${escapeHtml(playbackLabel(item).replace('resume: ', ''))}</span>
+          </div>
+          <div class="rewatch-note">${escapeHtml(note)}</div>
+          <div class="rewatch-labels">${labels}</div>
+          <div class="rewatch-card-actions">
+            <button class="primary-btn rewatch-resume" data-id="${escapeHtml(item.id)}" type="button">
+              <i data-lucide="${rewatchItemDone(item) ? 'rotate-ccw' : 'play'}"></i>
+              ${rewatchItemDone(item) ? 'Replay' : 'Resume'}
+            </button>
+            <button class="icon-btn rewatch-skill" data-id="${escapeHtml(item.id)}" type="button" title="Select for skill action" aria-label="Select for skill action">
+              <i data-lucide="send"></i>
+            </button>
+            <button class="icon-btn rewatch-open" data-id="${escapeHtml(item.id)}" type="button" title="Select in queue" aria-label="Select in queue">
+              <i data-lucide="panel-left-open"></i>
+            </button>
+          </div>
+        </div>
+      </article>`;
+  }).join('');
+  els.rewatchEmpty.classList.toggle('visible', visible.length === 0);
+
+  document.querySelectorAll('.rewatch-copy').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const item = state.queue.find((entry) => entry.id === button.dataset.id);
+      if (!item) return;
+      await copyText(buildQueueItemContext(item));
+    });
+  });
+  document.querySelectorAll('.rewatch-remove').forEach((button) => {
+    button.addEventListener('click', () => setRewatchLater(button.dataset.id, false).catch((err) => alert(err.message)));
+  });
+  document.querySelectorAll('.rewatch-resume, .rewatch-skill, .rewatch-open').forEach((button) => {
+    button.addEventListener('click', () => selectQueueItemFromRewatch(button.dataset.id));
+  });
+}
+
+function renderRewatch() {
+  renderRewatchLabels();
+  renderRewatchActiveLabels();
+  renderRewatchGrid();
+  document.querySelectorAll('[data-rewatch-watch]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.rewatchWatch === state.rewatchWatch);
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
 function renderStatus() {
   const warnings = state.warnings.length ? ` · ${state.warnings.length} warning${state.warnings.length === 1 ? '' : 's'}` : '';
   els.topStatus.textContent = `Claude ${state.claudeAvailable ? 'available' : 'missing'} · yt-dlp ${state.ytDlpAvailable ? 'available' : 'missing'}${warnings}`;
@@ -1030,6 +1433,7 @@ function renderStatus() {
 }
 
 function render() {
+  renderAppViews();
   renderStatus();
   renderPlaylists();
   renderFilters();
@@ -1038,21 +1442,38 @@ function render() {
   renderActions();
   renderPreview();
   renderJobs();
+  renderRewatch();
   if (window.lucide) lucide.createIcons();
 }
 
+let initialFilterApplied = false;
+
 async function refresh() {
+  if (clientMutationsInFlight > 0) return;
+  const mutationVersionAtStart = clientMutationVersion;
   const [health, queue] = await Promise.all([api('/api/health'), api('/api/queue')]);
+  if (clientMutationsInFlight > 0 || mutationVersionAtStart !== clientMutationVersion) return;
   state = {
     ...state,
     ...health,
-    queue: queue.queue,
+    queue: (queue.queue || []).map((item) => ({
+      ...item,
+      rewatchLater: Boolean(item.rewatchLater),
+      rewatchSavedAt: item.rewatchLater ? String(item.rewatchSavedAt || item.updatedAt || item.createdAt || '') : '',
+    })),
     labels: queue.labels || [],
     filterViews: queue.filterViews || [],
     jobs: queue.jobs,
     playlists: queue.playlistSubscriptions || [],
     removedVideos: queue.removedVideos || [],
   };
+  if (!initialFilterApplied && typeof queue.activeFilterQuery === 'string') {
+    state.filterQuery = queue.activeFilterQuery;
+    if (els.filterQuery) els.filterQuery.value = state.filterQuery;
+    initialFilterApplied = true;
+  }
+  const validLabelIds = new Set(state.labels.map((label) => label.id));
+  state.rewatchLabelIds = state.rewatchLabelIds.filter((labelId) => validLabelIds.has(labelId));
   syncActiveViewToQuery();
   selectFirstVisibleIfNeeded();
   if (!state.actions.some((action) => action.id === state.selectedAction)) {
@@ -1094,8 +1515,22 @@ async function importPlaylist() {
 }
 
 async function refreshPlaylist(playlistId) {
-  await api(`/api/playlists/${encodeURIComponent(playlistId)}/refresh`, { method: 'POST' });
+  const result = await api(`/api/playlists/${encodeURIComponent(playlistId)}/refresh`, { method: 'POST' });
   await refresh();
+  return result;
+}
+
+function showToast(message, kind = 'info', duration = 4000) {
+  const stack = document.getElementById('toastStack');
+  if (!stack) return;
+  const toast = document.createElement('div');
+  toast.className = `toast ${kind}`;
+  toast.textContent = message;
+  stack.appendChild(toast);
+  window.setTimeout(() => {
+    toast.classList.add('out');
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  }, duration);
 }
 
 async function saveCurrentFilterView() {
@@ -1134,6 +1569,7 @@ async function deleteCurrentFilterView() {
   await api(`/api/filter-views/${encodeURIComponent(view.id)}`, { method: 'DELETE' });
   state.activeViewId = 'builtin:today';
   state.filterQuery = 'created:today';
+  persistActiveFilter(state.filterQuery);
   await refresh();
 }
 
@@ -1145,6 +1581,31 @@ async function patchCurrent(patch) {
     body: JSON.stringify(patch),
   });
   await refresh();
+}
+
+async function setRewatchLater(itemId, enabled) {
+  const item = state.queue.find((entry) => entry.id === itemId);
+  if (!item) return;
+  if (itemId === state.currentId) await saveCurrentPlaybackPosition();
+  const patch = {
+    rewatchLater: Boolean(enabled),
+    rewatchSavedAt: enabled ? (item.rewatchSavedAt || new Date().toISOString()) : '',
+  };
+  const result = await api(`/api/queue/${encodeURIComponent(itemId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+  const index = state.queue.findIndex((entry) => entry.id === itemId);
+  if (index >= 0 && result.item) state.queue[index] = result.item;
+  render();
+}
+
+function selectQueueItemFromRewatch(itemId) {
+  if (!itemId) return;
+  saveCurrentPlaybackPosition();
+  state.currentId = itemId;
+  state.activeAppView = 'queue';
+  render();
 }
 
 async function createLabel() {
@@ -1265,8 +1726,6 @@ async function removeCurrent() {
   if (!item) return;
   await saveCurrentPlaybackPosition();
   await flushTimestamps();
-  const confirmed = window.confirm(`Remove "${item.title}" from the queue?\n\nRun logs are preserved, but this queue item will be removed.`);
-  if (!confirmed) return;
   await api(`/api/queue/${item.id}`, { method: 'DELETE' });
   const visible = filteredQueue().filter((entry) => entry.id !== item.id);
   state.currentId = visible[0]?.id || state.queue.find((entry) => entry.id !== item.id)?.id || '';
@@ -1291,16 +1750,49 @@ async function runSkill() {
   await refresh();
 }
 
+document.querySelectorAll('[data-app-view]').forEach((button) => {
+  button.addEventListener('click', () => {
+    saveCurrentPlaybackPosition();
+    state.activeAppView = button.dataset.appView || 'queue';
+    render();
+  });
+});
 document.getElementById('addVideo').addEventListener('click', () => addVideo().catch((err) => alert(err.message)));
 els.videoUrl.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') addVideo().catch((err) => alert(err.message));
 });
 els.mockPlaylist.addEventListener('click', () => importPlaylist().catch((err) => alert(err.message)));
+els.playlistList.addEventListener('click', async (event) => {
+  const button = event.target.closest('.playlist-refresh');
+  if (!button || button.disabled || playlistRefreshBusyId) return;
+  playlistRefreshBusyId = button.dataset.playlistId;
+  renderedPlaylistHtml = '';
+  renderPlaylists();
+  if (window.lucide) lucide.createIcons();
+  try {
+    const result = await refreshPlaylist(playlistRefreshBusyId);
+    const title = result?.subscription?.title || 'Playlist';
+    const stats = result?.subscription?.lastStats || {};
+    showToast(
+      `${title} refreshed: ${Number(stats.added || 0)} new, ${Number(stats.alreadyQueued || 0)} already queued`,
+      'success'
+    );
+  } catch (err) {
+    const firstLine = String(err.message || 'Playlist refresh failed').split('\n')[0].slice(0, 200);
+    showToast(`Playlist refresh failed: ${firstLine}`, 'error', 7000);
+  } finally {
+    playlistRefreshBusyId = '';
+    renderedPlaylistHtml = '';
+    renderPlaylists();
+    if (window.lucide) lucide.createIcons();
+  }
+});
 els.filterQuery.addEventListener('input', () => {
   state.filterQuery = els.filterQuery.value;
   syncActiveViewToQuery();
   selectFirstVisibleIfNeeded();
   render();
+  persistActiveFilter(state.filterQuery);
 });
 els.filterQuery.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key === 's') {
@@ -1316,6 +1808,11 @@ els.labelName.addEventListener('keydown', (event) => {
 });
 els.labelManager.addEventListener('toggle', () => {
   state.labelManagerOpen = els.labelManager.open;
+});
+els.toggleRewatch.addEventListener('click', () => {
+  const item = currentItem();
+  if (!item) return;
+  setRewatchLater(item.id, !item.rewatchLater).catch((err) => alert(err.message));
 });
 document.getElementById('markWatched').addEventListener('click', () => {
   const item = currentItem();
@@ -1357,6 +1854,34 @@ els.timestampFocus.addEventListener('change', () => {
 els.extraPrompt.addEventListener('input', renderPreview);
 els.runSkill.addEventListener('click', () => runSkill().catch((err) => alert(err.message)));
 document.getElementById('copyPreview').addEventListener('click', () => navigator.clipboard?.writeText(buildInvocation()));
+els.rewatchSearch.addEventListener('input', () => {
+  state.rewatchSearch = els.rewatchSearch.value;
+  renderRewatch();
+});
+els.rewatchSort.addEventListener('change', () => {
+  state.rewatchSort = els.rewatchSort.value;
+  renderRewatch();
+});
+document.querySelectorAll('[data-rewatch-watch]').forEach((button) => {
+  button.addEventListener('click', () => {
+    state.rewatchWatch = button.dataset.rewatchWatch || 'all';
+    renderRewatch();
+  });
+});
+els.rewatchClearLabels.addEventListener('click', () => {
+  state.rewatchLabelIds = [];
+  renderRewatch();
+});
+els.rewatchClearSearch.addEventListener('click', () => {
+  state.rewatchSearch = '';
+  els.rewatchSearch.value = '';
+  renderRewatch();
+});
+els.rewatchAddCurrent.addEventListener('click', () => {
+  const item = currentItem();
+  if (!item) return;
+  setRewatchLater(item.id, true).catch((err) => alert(err.message));
+});
 window.addEventListener('beforeunload', () => {
   saveCurrentPlaybackPosition();
   flushTimestamps();
