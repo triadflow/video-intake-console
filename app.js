@@ -104,6 +104,8 @@ let renderedVideoKey = '';
 let playbackTimer = null;
 let playbackSaveInFlight = Promise.resolve();
 const descriptionFetches = new Map();
+const captionDisableDelays = [0, 250, 750, 1500, 3000, 5000];
+let captionDisableTimers = [];
 let clientMutationVersion = 0;
 let clientMutationsInFlight = 0;
 
@@ -1023,6 +1025,7 @@ function renderYouTubePlayer(item, force = false) {
   }
   const start = resumeSecondsFor(item);
   youtubePlayer = new YT.Player('youtubePlayerHost', {
+    host: 'https://www.youtube-nocookie.com',
     videoId: item.videoId,
     playerVars: {
       playsinline: 1,
@@ -1033,16 +1036,38 @@ function renderYouTubePlayer(item, force = false) {
     },
     events: {
       onReady: (event) => {
-        disableYouTubeCaptions(event.target);
+        scheduleYouTubeCaptionsDisabled(event.target);
         if (start > 0) event.target.seekTo(start, true);
       },
-      onStateChange: handlePlayerStateChange,
+      onStateChange: (event) => {
+        scheduleYouTubeCaptionsDisabled(event.target);
+        handlePlayerStateChange(event);
+      },
+      onApiChange: (event) => {
+        scheduleYouTubeCaptionsDisabled(event.target);
+      },
     },
   });
 }
 
-function disableYouTubeCaptions(player) {
+function clearCaptionDisableTimers() {
+  for (const timer of captionDisableTimers) window.clearTimeout(timer);
+  captionDisableTimers = [];
+}
+
+function scheduleYouTubeCaptionsDisabled(player = youtubePlayer) {
+  clearCaptionDisableTimers();
+  for (const delay of captionDisableDelays) {
+    captionDisableTimers.push(window.setTimeout(() => disableYouTubeCaptions(player), delay));
+  }
+}
+
+function disableYouTubeCaptions(player = youtubePlayer) {
+  if (!player) return;
   try {
+    if (typeof player.setOption === 'function') {
+      player.setOption('captions', 'track', {});
+    }
     player.unloadModule('captions');
     player.unloadModule('cc');
   } catch {
@@ -1053,6 +1078,7 @@ function disableYouTubeCaptions(player) {
 function destroyYouTubePlayer() {
   stopPlaybackTimer();
   saveCurrentPlaybackPosition();
+  clearCaptionDisableTimers();
   if (!youtubePlayer) return;
   try {
     youtubePlayer.destroy();
