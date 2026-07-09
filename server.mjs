@@ -557,9 +557,10 @@ function upsertPlaylistSubscription({ playlistId, url, title }) {
 // YouTube caps anonymous playlist pagination at ~100-200 entries
 // (yt-dlp/yt-dlp#12759); authenticated requests return the full list.
 const YTDLP_COOKIES_BROWSER = process.env.VIDEO_INTAKE_YTDLP_COOKIES_BROWSER || 'chrome';
+const YTDLP_PLAYLIST_ARGS = ['--extractor-args', 'youtubetab:skip=authcheck', '--flat-playlist', '--dump-single-json'];
 
 async function fetchPlaylistInfo(url) {
-  const baseArgs = ['--flat-playlist', '--dump-single-json', url];
+  const baseArgs = [...YTDLP_PLAYLIST_ARGS, url];
   if (YTDLP_COOKIES_BROWSER && YTDLP_COOKIES_BROWSER !== 'none') {
     try {
       return await runJsonCommand('yt-dlp', ['--cookies-from-browser', YTDLP_COOKIES_BROWSER, ...baseArgs], 120_000);
