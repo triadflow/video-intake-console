@@ -117,13 +117,18 @@ async function api(path, options = {}) {
     clientMutationsInFlight += 1;
   }
   try {
-    const res = await fetch(path, {
-      ...options,
-      headers: {
-        'content-type': 'application/json',
-        ...(options.headers || {}),
-      },
-    });
+    let res;
+    try {
+      res = await fetch(path, {
+        ...options,
+        headers: {
+          'content-type': 'application/json',
+          ...(options.headers || {}),
+        },
+      });
+    } catch (err) {
+      throw new Error(`Local server is not reachable at ${window.location.origin}. Restart the Video Intake Console server and try again.`);
+    }
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Request failed: ${res.status}`);
     return body;
@@ -1559,6 +1564,15 @@ function showToast(message, kind = 'info', duration = 4000) {
   }, duration);
 }
 
+function summarizeErrorMessage(err, fallback = 'Request failed') {
+  const message = String(err?.message || fallback);
+  if (/Failed to resolve 'www\.youtube\.com'|Could not resolve host: www\.youtube\.com/i.test(message)) {
+    return 'YouTube is unreachable from this machine right now: DNS cannot resolve www.youtube.com.';
+  }
+  if (/Local server is not reachable/i.test(message)) return message;
+  return message.split('\n')[0].slice(0, 200);
+}
+
 async function saveCurrentFilterView() {
   const query = normalizeQuery(state.filterQuery);
   if (!query) {
@@ -1804,8 +1818,7 @@ els.playlistList.addEventListener('click', async (event) => {
       'success'
     );
   } catch (err) {
-    const firstLine = String(err.message || 'Playlist refresh failed').split('\n')[0].slice(0, 200);
-    showToast(`Playlist refresh failed: ${firstLine}`, 'error', 7000);
+    showToast(`Playlist refresh failed: ${summarizeErrorMessage(err, 'Playlist refresh failed')}`, 'error', 7000);
   } finally {
     playlistRefreshBusyId = '';
     renderedPlaylistHtml = '';
